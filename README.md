@@ -1,6 +1,7 @@
 MERN Stack Application with Vite
 Welcome to the MERN Stack Application repository! This application leverages modern technologies like Vite for front-end development, Supabase for authentication, Google Vision API for document validation, and Brevo API for email communication.
 
+
 Features
 Front-end built with Vite and modern UI/UX using Mantine.
 Back-end powered by Node.js and Express.
