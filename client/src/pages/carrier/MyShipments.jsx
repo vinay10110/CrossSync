@@ -4,7 +4,7 @@ import useStore from '../../components/Zustand'
 function MyShipments() {
   const navigate = useNavigate();
    let {shipments,userDoc}=useStore();
-   const data=shipments.filter((shipment)=>shipment.takenBy==userDoc._id)
+   const data=shipments.filter((shipment)=>shipment.takenBy==userDoc?._id)
 
   const handleCardClick = (shipment) => {
     navigate(`/dashboard/myshipment/${shipment._id}`, { state: { shipmentData: shipment } });

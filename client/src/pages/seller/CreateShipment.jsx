@@ -63,7 +63,7 @@ const [visible, setVisible] = useState(false);
       if (response.ok) {
         const data = await response.json();
         console.log(data);
-        
+        addShipment((data.shipment));
       } else {
         const errorData = await response.json();
         console.error('Backend Error:', errorData);
@@ -141,20 +141,12 @@ const [visible, setVisible] = useState(false);
       return null;
     }
    const publicURL=`https://usogemhitjxzpmcfxvap.supabase.co/storage/v1/object/public/filesStore/files/${uniqueFileName}`
-    
+    console.log(publicURL);
     return publicURL; 
   }
 
   const validateFile = (file, type) => {
-    const fileSizeInMB = file.size / (1024 * 1024);
-    const isImage = file.type.startsWith('image/');
-    if (['commercialInvoice', 'packingList', 'certificateOfOrigin'].includes(type)) {
-      return isImage && fileSizeInMB <= 5;
-    }
-    if (type === 'image') {
-      return isImage && fileSizeInMB <= 10; 
-    }
-    return false;
+    return file.type.startsWith('image/');
   };
 
   return (
@@ -204,7 +196,7 @@ const [visible, setVisible] = useState(false);
           
           <FileInput
             label="Upload Commercial Invoice"
-           
+           multiple
             onChange={(files) => {
               const validFiles = Array.from(files).filter((file) => validateFile(file, 'commercialInvoice'));
               form.setFieldValue('commercialInvoice', validFiles);
@@ -215,7 +207,7 @@ const [visible, setVisible] = useState(false);
          
           <FileInput
             label="Upload Packing List"
-            
+            multiple
             onChange={(files) => {
               const validFiles = Array.from(files).filter((file) => validateFile(file, 'packingList'));
               form.setFieldValue('packingList', validFiles);
@@ -226,7 +218,7 @@ const [visible, setVisible] = useState(false);
           
           <FileInput
             label="Upload Certificate of Origin"
-            
+            multiple
             onChange={(files) => {
               const validFiles = Array.from(files).filter((file) => validateFile(file, 'certificateOfOrigin'));
               form.setFieldValue('certificateOfOrigin', validFiles);
