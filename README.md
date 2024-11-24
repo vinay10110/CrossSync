@@ -7,11 +7,11 @@ Simple overview of use/purpose.
 Cross Sync is a tool that enables seamless synchronization of data across multiple platforms or devices in real-time. It ensures consistency and accessibility by keeping information updated and synchronized without manual intervention.
 
 ## Getting Started
+clone this repository and install dependencies
+```
+git clone https://github/vinay10110/CrossSync
+```
 
-### Dependencies
-
-* Describe any prerequisites, libraries, OS version, etc., needed before installing program.
-* ex. Windows 10
 
 ### Installing
 
