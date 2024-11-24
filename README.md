@@ -1,10 +1,10 @@
-# Project Title
+# Cross Sync
 
 Simple overview of use/purpose.
 
 ## Description
 
-An in-depth paragraph about your project and overview of use.
+Cross Sync is a tool that enables seamless synchronization of data across multiple platforms or devices in real-time. It ensures consistency and accessibility by keeping information updated and synchronized without manual intervention.
 
 ## Getting Started
 
