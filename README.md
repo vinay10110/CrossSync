@@ -19,12 +19,12 @@ Cross Sync is a tool that enables seamless synchronization of data across multip
 npm i
 ```
 
-### Executing program
+### Setting up the keys
 
-* How to run the program
-* Step-by-step bullets
 ```
-code blocks for commands
+VITE_API_URL='YOUR_BACKEND_URL'
+VITE_SUPABASE_URL="SUPABASE_URL'
+VITE_SUPABASE_KEY='SUPABASE_KEY"
 ```
 
 ## Help
