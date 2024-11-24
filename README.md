@@ -37,12 +37,14 @@ GOOGLE_API_KEY='YOUR_GOOGLE_API_KEY'
 EMAIL_TEMPLATE='YOUR_EMAIL'
 ```
 
-## Authors
+## Running Project on local mahine
 
-Contributors names and contact info
 
-ex. Dominique Pizzie  
-ex. [@DomPizzie](https://twitter.com/dompizzie)
+
+```
+npm run dev //for testing fronend
+npm test //for testing backend
+```
 
 ## Version History
 
