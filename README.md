@@ -19,7 +19,7 @@ Cross Sync is a tool that enables seamless synchronization of data across multip
 npm i
 ```
 
-### Setting up the keys
+### Setting up the keys(frontend)
 
 ```
 VITE_API_URL='YOUR_BACKEND_URL'
@@ -27,11 +27,14 @@ VITE_SUPABASE_URL="SUPABASE_URL'
 VITE_SUPABASE_KEY='SUPABASE_KEY"
 ```
 
-## Help
+### Setting up the keys(backend)
 
-Any advise for common problems or issues.
 ```
-command to run if program contains helper info
+MONGO_URL='MONGODB_URL'
+HOST_ADDRESS='YOUR_FRONTEND_URL'
+BREVO_API_KEY='YOUR_BREVO_API_KEY'
+GOOGLE_API_KEY='YOUR_GOOGLE_API_KEY'
+EMAIL_TEMPLATE='YOUR_EMAIL'
 ```
 
 ## Authors
