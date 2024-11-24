@@ -15,8 +15,9 @@ Cross Sync is a tool that enables seamless synchronization of data across multip
 
 ### Installing
 
-* How/where to download your program
-* Any modifications needed to be made to files/folders
+```
+npm i
+```
 
 ### Executing program
 
