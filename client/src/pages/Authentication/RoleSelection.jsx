@@ -23,9 +23,14 @@ const RoleSelection = () => {
 
   useEffect(() => {
     if (isLoaded && !isSignedIn) {
-      navigate('/auth/signin');
+      navigate('/auth/signin', { replace: true });
     }
-  }, [isLoaded, isSignedIn, navigate]);
+    
+    // Check if user already has a role
+    if (isLoaded && isSignedIn && user?.unsafeMetadata?.role) {
+      navigate('/dashboard', { replace: true });
+    }
+  }, [isLoaded, isSignedIn, navigate, user]);
 
   const handleRoleSelect = async (role) => {
     if (!user) {
@@ -53,10 +58,8 @@ const RoleSelection = () => {
         color: 'green'
       });
 
-      // Wait for a moment to show the success message
-      setTimeout(() => {
-        navigate('/dashboard');
-      }, 1000);
+      // Redirect immediately after success
+      navigate('/dashboard');
 
     } catch (error) {
       console.error('Error updating user role:', error);
@@ -143,4 +146,4 @@ const RoleSelection = () => {
   );
 };
 
-export default RoleSelection; 
+export default RoleSelection;

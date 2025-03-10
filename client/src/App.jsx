@@ -8,6 +8,19 @@ import { Notifications } from "@mantine/notifications";
 import "@mantine/notifications/styles.css";
 import { ModalsProvider } from "@mantine/modals";
 import Messages from "./pages/Messages";
+import { RedirectToSignIn, SignedIn, SignedOut, useUser } from "@clerk/clerk-react";
+
+const ProtectedRoute = ({ children }) => {
+  const { isSignedIn, isLoaded } = useUser();
+
+  if (!isLoaded) return null;
+  
+  if (!isSignedIn) {
+    return <Navigate to="/auth/signin" replace />;
+  }
+
+  return children;
+};
 
 function AppContent() {
   return (
@@ -19,9 +32,32 @@ function AppContent() {
           <Route path="/" element={<Authentication />} />
           <Route path="/auth/signin" element={<SignInPage />} />
           <Route path="/auth/signup" element={<SignUpPage />} />
-          <Route path="/auth/role-selection" element={<RoleSelection />} />
-          <Route path="/dashboard/*" element={<Dashboard />} />
-          <Route path="/messages" element={<Messages />} />
+          
+          {/* Protected routes */}
+          <Route
+            path="/auth/role-selection"
+            element={
+              <ProtectedRoute>
+                <RoleSelection />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/dashboard/*"
+            element={
+              <ProtectedRoute>
+                <Dashboard />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/messages"
+            element={
+              <ProtectedRoute>
+                <Messages />
+              </ProtectedRoute>
+            }
+          />
           {/* Catch all route */}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
