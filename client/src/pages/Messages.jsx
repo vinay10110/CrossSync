@@ -17,29 +17,20 @@ const Messages = () => {
   const [message, setMessage] = useState('');
   const navigate = useNavigate();
 
-  useEffect(() => {
-    if (isLoaded && !isSignedIn) {
-      navigate('/auth/signin');
-      return;
-    }
-
-    if (user) {
-      loadActiveChats();
-    }
-  }, [user, isLoaded, isSignedIn, navigate]);
-
   const loadActiveChats = async () => {
     try {
       setIsLoading(true);
+      // Get the session token instead of user.id
       const response = await fetch(`${import.meta.env.VITE_API_URL}/shipments/accepted-bids`, {
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${user.id}`
+          'Authorization': `Bearer ${user.emailAddresses[0].emailAddress}` // Use email as identifier
         }
       });
 
       if (!response.ok) {
-        throw new Error('Failed to fetch accepted bids');
+        const error = await response.json();
+        throw new Error(error.message || 'Failed to fetch accepted bids');
       }
 
       const data = await response.json();
@@ -49,13 +40,27 @@ const Messages = () => {
       console.error('Error loading active chats:', error);
       notifications.show({
         title: 'Error',
-        message: 'Failed to load chats. Please try again.',
+        message: error.message || 'Failed to load chats. Please try again.',
         color: 'red'
       });
+      setActiveChats([]); // Set empty array on error
     } finally {
       setIsLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (!isLoaded) return; // Wait for clerk to load
+
+    if (!isSignedIn) {
+      navigate('/auth/signin');
+      return;
+    }
+
+    if (user?.emailAddresses?.[0]?.emailAddress) {
+      loadActiveChats();
+    }
+  }, [user, isLoaded, isSignedIn, navigate]);
 
   const getOtherUser = (bid) => {
     const isCarrier = user.publicMetadata?.role === 'carrier';
@@ -242,4 +247,4 @@ const Messages = () => {
   );
 };
 
-export default Messages; 
+export default Messages;

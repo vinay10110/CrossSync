@@ -1,366 +1,213 @@
 import { useState, useEffect } from 'react';
 import {
-  Stack,
-  Text,
-  Avatar,
-  Group,
   Box,
-  ScrollArea,
-  Paper,
-  Container,
-  TextInput,
-  ActionIcon,
   Flex,
-  Divider,
-  Badge,
+  LoadingOverlay,
+  Avatar,
+  Text,
+  Group,
+  Stack,
   UnstyledButton,
-  LoadingOverlay
+  Button,
+  Paper,
 } from '@mantine/core';
-import { IconSearch, IconMessage } from '@tabler/icons-react';
-import { useUser } from '@clerk/clerk-react';
 import { notifications } from '@mantine/notifications';
+import { IconAt } from '@tabler/icons-react';
+
+import { useUser } from '@clerk/clerk-react';
+import { 
+  Chat, 
+  Channel, 
+  MessageList, 
+  MessageInput, 
+  Window 
+} from 'stream-chat-react';
+import { StreamChat } from 'stream-chat';
+import 'stream-chat-react/dist/css/v2/index.css';
 import { supabase } from '../components/Supabase';
-import ShipmentChat from '../components/ShipmentChat';
+
+const STREAM_API_KEY = '3n72h7jzrate';
 
 const Chats = () => {
   const { user } = useUser();
-  const [chats, setChats] = useState([]);
-  const [selectedChat, setSelectedChat] = useState(null);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
+  const [client, setClient] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [selectedUser, setSelectedUser] = useState(null);
+  const [channel, setChannel] = useState(null);
+  const [acceptedShipments, setAcceptedShipments] = useState([]);
 
-  // Fetch all chats where user is either seller or carrier
   useEffect(() => {
-    const fetchChats = async () => {
-      if (!user?.id) return;
-      
-      setIsLoading(true);
+    const initChat = async () => {
+      if (!user) return;
+
+      const chatClient = StreamChat.getInstance(STREAM_API_KEY);
+
       try {
-        console.log('Fetching chats for user:', user.id);
+        await chatClient.connectUser(
+          {
+            id: user.id,
+            name: user.fullName,
+            image: user.imageUrl,
+          },
+          chatClient.devToken(user.id)
+        );
 
-        // First ensure user profile exists
-        const { data: existingProfile } = await supabase
-          .from('users')
-          .select('*')
-          .eq('id', user.id)
-          .single();
-
-        if (!existingProfile) {
-          // Create new profile if doesn't exist
-          const { data: newProfile, error: createError } = await supabase
-            .from('users')
-            .insert({
-              id: user.id,
-              email: user.emailAddresses[0].emailAddress,
-              full_name: user.fullName,
-              company_name: user.publicMetadata.companyName || 'Unknown Company',
-              image_url: user.imageUrl,
-              role: user.publicMetadata.role || 'seller',
-              created_at: new Date().toISOString()
-            })
-            .select()
-            .single();
-
-          if (createError) {
-            console.error('Error creating user profile:', createError);
-            // Continue with fetching chats even if profile creation fails
-          }
-        }
-
-        // Get shipments where user is seller
-        const { data: sellerShipments, error: sellerError } = await supabase
-          .from('shipments')
-          .select(`
-            id,
-            product_name,
-            status,
-            created_at,
-            carrier:carrier_id (
-              id,
-              full_name,
-              company_name,
-              email,
-              image_url
-            ),
-            seller:seller_id (
-              id,
-              full_name,
-              company_name,
-              email,
-              image_url
-            ),
-            chat_messages (
-              id,
-              content,
-              message_type,
-              sender_id,
-              created_at
-            )
-          `)
-          .eq('seller_id', user.id)
-          .eq('status', 'accepted')
-          .order('created_at', { ascending: false });
-
-        if (sellerError) {
-          console.error('Error fetching seller shipments:', sellerError);
-          // Continue with carrier shipments even if seller shipments fail
-        }
-
-        // Get shipments where user is carrier
-        const { data: carrierShipments, error: carrierError } = await supabase
-          .from('shipments')
-          .select(`
-            id,
-            product_name,
-            status,
-            created_at,
-            carrier:carrier_id (
-              id,
-              full_name,
-              company_name,
-              email,
-              image_url
-            ),
-            seller:seller_id (
-              id,
-              full_name,
-              company_name,
-              email,
-              image_url
-            ),
-            chat_messages (
-              id,
-              content,
-              message_type,
-              sender_id,
-              created_at
-            )
-          `)
-          .eq('carrier_id', user.id)
-          .eq('status', 'accepted')
-          .order('created_at', { ascending: false });
-
-        if (carrierError) {
-          console.error('Error fetching carrier shipments:', carrierError);
-          // Continue with processing even if carrier shipments fail
-        }
-
-        console.log('Seller shipments:', sellerShipments);
-        console.log('Carrier shipments:', carrierShipments);
-
-        const allChats = [
-          ...(sellerShipments || []),
-          ...(carrierShipments || [])
-        ].map(chat => ({
-          ...chat,
-          // Sort messages by date and get the latest
-          chat_messages: chat.chat_messages?.sort((a, b) => 
-            new Date(b.created_at) - new Date(a.created_at)
-          ) || [],
-          // Get the latest message
-          last_message: chat.chat_messages?.sort((a, b) => 
-            new Date(b.created_at) - new Date(a.created_at)
-          )[0] || null,
-          // Determine the other party based on user role
-          other_party: user.id === chat.seller?.id ? chat.carrier : chat.seller
-        })).filter(chat => chat.other_party !== null); // Filter out chats where other party is missing
-
-        console.log('All chats:', allChats);
-        setChats(allChats);
+        setClient(chatClient);
       } catch (error) {
-        console.error('Error in chat fetching process:', error);
-        // Don't show error notification for profile issues
-        if (!error.message.includes('user profile')) {
-          notifications.show({
-            title: 'Error',
-            message: 'Failed to load chats. Please try again later.',
-            color: 'red'
-          });
-        }
+        console.error('Failed to connect to Stream Chat:', error);
       } finally {
         setIsLoading(false);
       }
     };
 
-    fetchChats();
-  }, [user]);
-
-  // Subscribe to new messages
-  useEffect(() => {
-    if (!user?.id) return;
-
-    const subscription = supabase
-      .channel('chat_messages')
-      .on('postgres_changes', {
-        event: 'INSERT',
-        schema: 'public',
-        table: 'chat_messages'
-      }, (payload) => {
-        console.log('New message received:', payload);
-        // Refresh chats when new message arrives
-        fetchChats();
-      })
-      .subscribe();
+    initChat();
 
     return () => {
-      subscription.unsubscribe();
+      if (client) client.disconnectUser();
     };
   }, [user]);
 
-  const getOtherParty = (chat) => {
-    if (!chat || !user) return null;
-    return user.id === chat.seller.id ? chat.carrier : chat.seller;
-  };
+  useEffect(() => {
+    const fetchAcceptedShipments = async () => {
+      if (!user?.id) return;
 
-  const getLastMessage = (chat) => {
-    if (!chat.last_message) {
-      return 'No messages yet';
+      try {
+        // Fetch shipments where the logged-in user is either seller or carrier
+        const { data: shipments, error } = await supabase
+          .from('shipments')
+          .select(`
+            id,
+            product_name,
+            carrier_id,
+            seller_id,
+            carrier:carrier_id (
+              id,
+              full_name,
+              email,
+              image_url
+            ),
+            seller:seller_id (
+              id,
+              full_name,
+              email,
+              image_url
+            )
+          `)
+          .or(`seller_id.eq.${user.id},carrier_id.eq.${user.id}`)
+          .eq('status', 'accepted');
+
+        if (error) throw error;
+        setAcceptedShipments(shipments);
+
+        // Create channels for each accepted shipment
+        if (client) {
+          for (const shipment of shipments) {
+            const otherUser = shipment.seller_id === user.id ? shipment.carrier : shipment.seller;
+            const channelId = `shipment-${shipment.id}`;
+
+            const channel = client.channel('messaging', channelId, {
+              members: [user.id, otherUser.id],
+              name: `Shipment: ${shipment.product_name}`,
+              shipment_id: shipment.id
+            });
+
+            await channel.watch();
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching shipments:', error);
+        notifications.show({
+          title: 'Error',
+          message: 'Failed to load shipments',
+          color: 'red'
+        });
+      }
+    };
+
+    if (client) {
+      fetchAcceptedShipments();
     }
-    return chat.last_message.content.text || 'Shared a file';
-  };
+  }, [user, client]);
 
-  const getLastMessageTime = (chat) => {
-    if (!chat.last_message) {
-      return '';
-    }
-    return new Date(chat.last_message.created_at).toLocaleTimeString([], { 
-      hour: '2-digit', 
-      minute: '2-digit' 
-    });
-  };
-
-  const filteredChats = chats.filter(chat => {
-    const otherParty = getOtherParty(chat);
-    if (!otherParty) return false;
-    
-    return otherParty.company_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-           chat.product_name.toLowerCase().includes(searchQuery.toLowerCase());
-  });
+  if (!client || isLoading) {
+    return (
+      <Flex h="calc(100vh - 120px)" align="center" justify="center">
+        <LoadingOverlay visible={true} />
+      </Flex>
+    );
+  }
 
   return (
     <Flex h="calc(100vh - 120px)" pos="relative">
-      <LoadingOverlay visible={isLoading} />
-      
-      {/* Left Sidebar - Chat List */}
-      <Box w={300} h="100%" style={{ borderRight: '1px solid #eee' }}>
-        <Paper p="md" radius={0} h="100%">
-          <Stack spacing="md">
-            <TextInput
-              placeholder="Search chats..."
-              icon={<IconSearch size={16} />}
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.currentTarget.value)}
-            />
-            
-            <ScrollArea h="calc(100vh - 190px)">
-              <Stack spacing="xs">
-                {filteredChats.length > 0 ? (
-                  filteredChats.map((chat) => {
-                    const otherParty = getOtherParty(chat);
-                    if (!otherParty) return null;
-
-                    return (
-                      <UnstyledButton
-                        key={chat.id}
-                        onClick={() => setSelectedChat(chat)}
-                        p="sm"
-                        style={{
-                          backgroundColor: selectedChat?.id === chat.id ? '#f8f9fa' : 'transparent',
-                          borderRadius: '8px',
-                          width: '100%'
-                        }}
-                      >
-                        <Group align="flex-start" spacing="sm">
-                          <Avatar
-                            src={otherParty.image_url}
-                            radius="xl"
-                            size="md"
-                          />
-                          <Box style={{ flex: 1 }}>
-                            <Group position="apart" mb={4}>
-                              <Text size="sm" weight={500} lineClamp={1}>
-                                {otherParty.company_name}
-                              </Text>
-                              <Text size="xs" color="dimmed">
-                                {getLastMessageTime(chat)}
-                              </Text>
-                            </Group>
-                            <Text size="xs" color="dimmed" lineClamp={1}>
-                              {chat.product_name}
-                            </Text>
-                            <Text size="xs" lineClamp={1}>
-                              {getLastMessage(chat)}
-                            </Text>
-                          </Box>
-                        </Group>
-                      </UnstyledButton>
-                    );
-                  })
-                ) : (
-                  <Flex 
-                    direction="column" 
-                    align="center" 
-                    justify="center" 
-                    h="100%"
-                    py="xl"
-                  >
-                    <IconMessage size={48} color="gray" opacity={0.3} />
-                    <Text align="center" color="dimmed" size="sm" mt="md">
-                      {isLoading ? 'Loading chats...' : 'No chats found'}
-                    </Text>
-                  </Flex>
-                )}
-              </Stack>
-            </ScrollArea>
+      <Chat client={client} theme="messaging light">
+        <Box w={300} h="100%" style={{ borderRight: '1px solid #eee' }}>
+          <Stack p="md" spacing="xs">
+            {acceptedShipments.map((shipment) => {
+              const otherUser = shipment.seller_id === user.id ? shipment.carrier : shipment.seller;
+              const channelId = `shipment-${shipment.id}`;
+              
+              return (
+                <UnstyledButton
+                  key={shipment.id}
+                  onClick={() => {
+                    const channel = client.channel('messaging', channelId);
+                    channel.watch().then(() => {
+                      setChannel(channel);
+                      setSelectedUser(otherUser);
+                    });
+                  }}
+                  p="sm"
+                  style={{
+                    backgroundColor: channel?.id === channelId ? '#f8f9fa' : 'transparent',
+                    borderRadius: '8px',
+                    width: '100%'
+                  }}
+                >
+                  <Group>
+                    <Avatar
+                      src={otherUser.image_url}
+                      radius="xl"
+                      size="md"
+                    />
+                    <Box>
+                      <Text size="sm" weight={500}>
+                        {otherUser.full_name}
+                      </Text>
+                      <Text size="xs" color="dimmed">
+                        {shipment.product_name}
+                      </Text>
+                    </Box>
+                  </Group>
+                </UnstyledButton>
+              );
+            })}
           </Stack>
-        </Paper>
-      </Box>
+        </Box>
 
-      {/* Right Side - Chat Area */}
-      <Box style={{ flex: 1 }}>
-        {selectedChat ? (
-          <Flex direction="column" h="100%">
-            <Paper p="md" radius={0} style={{ borderBottom: '1px solid #eee' }}>
-              <Group>
-                <Avatar
-                  src={getOtherParty(selectedChat)?.image_url}
-                  radius="xl"
-                  size="md"
-                />
-                <Box>
-                  <Text weight={500}>
-                    {getOtherParty(selectedChat)?.company_name}
-                  </Text>
-                  <Text size="xs" color="dimmed">
-                    {selectedChat.product_name}
-                  </Text>
-                </Box>
-              </Group>
-            </Paper>
-            <Box style={{ flex: 1 }}>
-              <ShipmentChat
-                shipmentId={selectedChat.id}
-                carrierId={selectedChat.carrier.id}
-                sellerId={selectedChat.seller.id}
-              />
-            </Box>
-          </Flex>
-        ) : (
-          <Flex 
-            direction="column" 
-            align="center" 
-            justify="center" 
-            h="100%"
-          >
-            <IconMessage size={64} color="gray" opacity={0.3} />
-            <Text align="center" color="dimmed" size="lg" mt="md">
-              Select a chat to start messaging
-            </Text>
-          </Flex>
-        )}
-      </Box>
+        <Box style={{ flex: 1 }}>
+          {channel ? (
+            <Channel channel={channel}>
+              <Window>
+                <MessageList />
+                <MessageInput />
+              </Window>
+            </Channel>
+          ) : (
+            <Flex 
+              align="center" 
+              justify="center" 
+              h="100%"
+              direction="column"
+            >
+              <Text size="xl" color="dimmed">
+                Select a user to start chatting
+              </Text>
+            </Flex>
+          )}
+        </Box>
+      </Chat>
     </Flex>
   );
 };
 
-export default Chats; 
+export default Chats;

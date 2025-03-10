@@ -250,7 +250,8 @@ export default function CreateShipment() {
       });
 
       if (!response.ok) {
-        throw new Error('Failed to create shipment');
+const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to create shipment');
       }
 
       notifications.show({
@@ -277,11 +278,12 @@ export default function CreateShipment() {
       form.setValues({
         ...form.values,
         products: [{
+          ...emptyProduct,
           productName: productTemplate.name || '',
           productType: productTemplate.type || '',
           category: productTemplate.category?.[0] || '',
           subCategory: productTemplate.subCategory || '',
-          dimensions: productTemplate.dimensions || { length: 0, width: 0, height: 0, unit: 'cm' },
+          dimensions: productTemplate.dimensions,  // Use dimensions directly from template
           weight: productTemplate.weight || 0,
           quantity: 1,
           price: productTemplate.price || 0,
@@ -343,44 +345,66 @@ export default function CreateShipment() {
           {...form.getInputProps(`products.${productIndex}.subCategory`)}
         />
 
-        <Title order={6}>Dimensions</Title>
-        <Group grow>
-          <NumberInput
-            required
-            label="Length"
-            {...form.getInputProps(`products.${productIndex}.dimensions.length`)}
-            min={0}
-          />
-          <NumberInput
-            required
-            label="Width"
-            {...form.getInputProps(`products.${productIndex}.dimensions.width`)}
-            min={0}
-          />
-          <NumberInput
-            required
-            label="Height"
-            {...form.getInputProps(`products.${productIndex}.dimensions.height`)}
-            min={0}
-          />
-          <Select
-            label="Unit"
-            {...form.getInputProps(`products.${productIndex}.dimensions.unit`)}
-            data={[
-              { value: 'cm', label: 'Centimeters' },
-              { value: 'in', label: 'Inches' },
-              { value: 'm', label: 'Meters' }
-            ]}
-          />
-        </Group>
+        {/* Only show dimensions input if not using product template */}
+        {!isInstantShipment ? (
+          <>
+            <Title order={6}>Dimensions</Title>
+            <Group grow>
+              <NumberInput
+                required
+                label="Length"
+                {...form.getInputProps(`products.${productIndex}.dimensions.length`)}
+                min={0}
+              />
+              <NumberInput
+                required
+                label="Width"
+                {...form.getInputProps(`products.${productIndex}.dimensions.width`)}
+                min={0}
+              />
+              <NumberInput
+                required
+                label="Height"
+                {...form.getInputProps(`products.${productIndex}.dimensions.height`)}
+                min={0}
+              />
+              <Select
+                label="Unit"
+                {...form.getInputProps(`products.${productIndex}.dimensions.unit`)}
+                data={[
+                  { value: 'cm', label: 'Centimeters' },
+                  { value: 'in', label: 'Inches' },
+                  { value: 'm', label: 'Meters' }
+                ]}
+              />
+            </Group>
+          </>
+        ) : (
+          // Show dimensions from template as read-only
+          <Stack>
+            <Title order={6}>Product Dimensions (from template)</Title>
+            <Text>
+              {`${product.dimensions.length} × ${product.dimensions.width} × ${product.dimensions.height} ${product.dimensions.unit}`}
+            </Text>
+          </Stack>
+        )}
 
         <Group grow>
-          <NumberInput
-            required
-            label="Weight (kg)"
-            {...form.getInputProps(`products.${productIndex}.weight`)}
-            min={0}
-          />
+          {/* Show weight as read-only if using template */}
+          {isInstantShipment ? (
+            <TextInput
+              label="Weight (kg)"
+              value={`${product.weight} kg`}
+              readOnly
+            />
+          ) : (
+            <NumberInput
+              required
+              label="Weight (kg)"
+              {...form.getInputProps(`products.${productIndex}.weight`)}
+              min={0}
+            />
+          )}
 
           <NumberInput
             required

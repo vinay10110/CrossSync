@@ -95,7 +95,7 @@ export function Dashboard() {
     const fetchProfile = async () => {
       if (user?.emailAddresses?.[0]?.emailAddress) {
         try {
-          const response = await fetch(`${import.meta.env.VITE_API_URL}/shipments/seller/profile/${user.emailAddresses[0].emailAddress}`, {
+          const response = await fetch(`${import.meta.env.VITE_API_URL}/seller/profile/${user.emailAddresses[0].emailAddress}`, {
             method: 'GET',
             headers: {
               'Content-Type': 'application/json',

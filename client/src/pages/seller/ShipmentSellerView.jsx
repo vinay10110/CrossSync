@@ -64,6 +64,8 @@ const ShipmentSellerView = () => {
   const [convertedBidAmounts, setConvertedBidAmounts] = useState({});
   const [isAcceptingBid, setIsAcceptingBid] = useState(false);
   const [chatOpened, { open: openChat, close: closeChat }] = useDisclosure(false);
+  const [showCancelModal, setShowCancelModal] = useState(false);
+  const [isCancelling, setIsCancelling] = useState(false);
   
   const fetchBids = async () => {
     try {
@@ -199,11 +201,7 @@ const ShipmentSellerView = () => {
       setDocuments(data || []);
     } catch (error) {
       console.error('Error fetching documents:', error);
-      notifications.show({
-        title: 'Error',
-        message: 'Failed to fetch documents',
-        color: 'red'
-      });
+      
     }
   };
 
@@ -375,6 +373,37 @@ const ShipmentSellerView = () => {
 
   const handleBack = () => {
     navigate(-1);
+  };
+
+  const handleCancelShipment = async () => {
+    try {
+      setIsCancelling(true);
+      const response = await fetch(`${import.meta.env.VITE_API_URL}/shipments/deleteshipment/${shipmentData._id}`, {
+        method: 'DELETE'
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to cancel shipment');
+      }
+
+      notifications.show({
+        title: 'Success',
+        message: 'Shipment cancelled successfully',
+        color: 'green'
+      });
+
+      navigate('/dashboard/shipments');
+    } catch (error) {
+      console.error('Error cancelling shipment:', error);
+      notifications.show({
+        title: 'Error',
+        message: error.message || 'Failed to cancel shipment',
+        color: 'red'
+      });
+    } finally {
+      setIsCancelling(false);
+      setShowCancelModal(false);
+    }
   };
 
   const renderShipmentDetails = () => {
@@ -1072,15 +1101,26 @@ const ShipmentSellerView = () => {
         </Button>
             <Title order={3}>Shipment Details</Title>
           </Group>
-        {bids.length > 0 && !acceptedBid && (
-          <Button
+        <Group>
+          {bids.length > 0 && !acceptedBid && (
+            <Button
               variant="filled"
-            leftIcon={<IconListDetails size={16} />}
-            onClick={openBidsModal}
+              leftIcon={<IconListDetails size={16} />}
+              onClick={openBidsModal}
+            >
+              View All Bids ({bids.length})
+            </Button>
+          )}
+          <Button
+            color="red"
+            variant="outline"
+            leftIcon={<IconTrash size={16} />}
+            onClick={() => setShowCancelModal(true)}
+            disabled={shipmentData.isCompleted || shipmentData.dispatched}
           >
-            View All Bids ({bids.length})
+            Cancel Shipment
           </Button>
-        )}
+        </Group>
       </Group>
       </Paper>
 
@@ -1128,30 +1168,35 @@ const ShipmentSellerView = () => {
             </Tabs.Panel>
 
             <Tabs.Panel value="Images">
-                <SimpleGrid cols={3} spacing="md">
-                {shipmentData.productImages && shipmentData.productImages.length > 0 ? (
-                  shipmentData.productImages.map((imageUrl, index) => (
-                    <Card key={index} shadow="sm" padding="xs" radius="md" withBorder>
-                      <Card.Section>
-                        <Image
-                          src={imageUrl}
-                          height={200}
-                          alt={`Product image ${index + 1}`}
-                          fit="cover"
-                        />
-                      </Card.Section>
-                    </Card>
-                  ))
-                ) : (
-                    <Paper p="xl" withBorder style={{ gridColumn: '1 / -1' }}>
-                    <Flex direction="column" align="center" gap="md">
-                      <IconPhoto size={48} color="gray" />
-                      <Text size="lg" color="dimmed">No images available for this shipment.</Text>
-                    </Flex>
-                  </Paper>
-                )}
-                </SimpleGrid>
-            </Tabs.Panel>
+  <SimpleGrid cols={3} spacing="md">
+    {shipmentData.products && shipmentData.products.some(product => product.productImages?.length > 0) ? (
+      shipmentData.products.map((product, productIndex) => 
+        product.productImages?.map((imageUrl, imageIndex) => (
+          <Card key={`${productIndex}-${imageIndex}`} shadow="sm" padding="xs" radius="md" withBorder>
+            <Card.Section>
+              <Image
+                src={imageUrl}
+                height={200}
+                alt={`${product.productName} image ${imageIndex + 1}`}
+                fit="cover"
+              />
+            </Card.Section>
+            <Text size="sm" color="dimmed" mt="xs">
+              {product.productName} - Image {imageIndex + 1}
+            </Text>
+          </Card>
+        ))
+      ).flat()
+    ) : (
+      <Paper p="xl" withBorder style={{ gridColumn: '1 / -1' }}>
+        <Flex direction="column" align="center" gap="md">
+          <IconPhoto size={48} color="gray" />
+          <Text size="lg" color="dimmed">No images available for any products in this shipment.</Text>
+        </Flex>
+      </Paper>
+    )}
+  </SimpleGrid>
+</Tabs.Panel>
 
             <Tabs.Panel value="Documents">
                 {renderDocumentsTab()}
@@ -1191,6 +1236,8 @@ const ShipmentSellerView = () => {
                       leftIcon={<IconTruck size={16} />}
                       variant="outline"
                             fullWidth
+                            onClick={() => setShowCancelModal(true)}
+                            disabled={shipmentData.isCompleted || shipmentData.dispatched}
                           >
                       Cancel Shipment
                           </Button>
@@ -1281,6 +1328,41 @@ const ShipmentSellerView = () => {
             onClose={closeChat}
           />
         )}
+      </Modal>
+
+      <Modal
+        opened={showCancelModal}
+        onClose={() => !isCancelling && setShowCancelModal(false)}
+        title={<Text size="lg" weight={600} color="red">Cancel Shipment</Text>}
+      >
+        <Stack spacing="md">
+          <Text>Are you sure you want to cancel this shipment? This action cannot be undone.</Text>
+          
+          <Alert 
+            color="red" 
+            variant="light"
+            title="Warning"
+          >
+            Cancelling a shipment may have financial implications and affect your seller rating.
+          </Alert>
+
+          <Group position="apart" mt="xl">
+            <Button 
+              variant="subtle" 
+              onClick={() => setShowCancelModal(false)}
+              disabled={isCancelling}
+            >
+              Keep Shipment
+            </Button>
+            <Button 
+              color="red" 
+              onClick={handleCancelShipment}
+              loading={isCancelling}
+            >
+              {isCancelling ? 'Cancelling...' : 'Yes, Cancel Shipment'}
+            </Button>
+          </Group>
+        </Stack>
       </Modal>
     </Container>
   );

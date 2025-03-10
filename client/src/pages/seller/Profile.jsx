@@ -95,29 +95,31 @@ const Profile = () => {
   const fetchBusinessProfile = async () => {
     try {
       setIsLoading(true);
-      const response = await fetch(`${import.meta.env.VITE_API_URL}/shipments/seller/profile/${user.emailAddresses[0].emailAddress}`);
+      const response = await fetch(`${import.meta.env.VITE_API_URL}/seller/profile/${user.emailAddresses[0].emailAddress}`);
+      
       if (response.ok) {
-        const data = await response.json();
+        const { profile } = await response.json();
+        
+        // Correctly map the profile data to state
         setBusinessProfile({
-          ...data.user,
-          companyName: data.user.companyName || '',
-          businessType: data.user.businessType || '',
-          registrationNumber: data.user.registrationNumber || '',
-          taxId: data.user.taxId || '',
-          description: data.user.description || '',
-          address: data.user.address || {
-            street: '',
-            city: '',
-            state: '',
-            country: '',
-            zipCode: '',
+          companyName: profile.companyName || '',
+          businessType: profile.businessType || '',
+          registrationNumber: profile.registrationNumber || '',
+          taxId: profile.taxId || '',
+          description: profile.description || '',
+          address: {
+            street: profile.address?.street || '',
+            city: profile.address?.city || '',
+            state: profile.address?.state || '',
+            country: profile.address?.country || '',
+            zipCode: profile.address?.zipCode || '',
           },
           contact: {
-            email: data.user.email || user.emailAddresses[0].emailAddress,
-            phone: data.user.phone || '',
-            website: data.user.website || '',
+            email: profile.contact?.email || user.emailAddresses[0].emailAddress,
+            phone: profile.contact?.phone || '',
+            website: profile.contact?.website || '',
           },
-          categories: data.user.categories || [],
+          categories: profile.categories || [],
         });
       }
     } catch (error) {
@@ -1006,4 +1008,4 @@ const Profile = () => {
   );
 };
 
-export default Profile; 
+export default Profile;
