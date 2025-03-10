@@ -4,12 +4,18 @@ import './index.css'
 import App from './App.jsx'
 import '@mantine/core/styles.css';
 import { MantineProvider } from '@mantine/core';
+
 createRoot(document.getElementById('root')).render(
-<React.StrictMode>
-    <MantineProvider>
-    
-      <App />
+  <React.StrictMode>
+   
+     <MantineProvider>
      
-    </MantineProvider>
+         
+      <App />
+      
+     </MantineProvider>
+ 
+      
+   
   </React.StrictMode>
 )

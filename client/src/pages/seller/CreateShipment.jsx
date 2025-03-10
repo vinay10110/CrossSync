@@ -1,251 +1,530 @@
+/* eslint-disable react-hooks/exhaustive-deps */
 /* eslint-disable no-unused-vars */
-import { useState } from 'react';
-import { FileInput, Stepper, Button, Group, TextInput, NumberInput,LoadingOverlay,Box } from '@mantine/core';
+import { useState, useEffect } from 'react';
+// Optimize Mantine core imports by grouping them
+import { MantineProvider } from '@mantine/core';
+import {
+  Box,
+  Group,
+  Stack,
+  Paper,
+  Container,
+  TextInput,
+  NumberInput,
+  FileInput,
+  LoadingOverlay,
+  Card,
+  Image,
+  Text,
+  Button,
+  SimpleGrid,
+  Title,
+  Select,
+  ActionIcon,
+  Divider
+} from '@mantine/core';
+
+// Group all layout components
+import { Grid } from '@mantine/core';
+
+// Keep other imports separate as they're from different packages
+import { notifications } from '@mantine/notifications';
 import { useForm } from '@mantine/form';
 import { supabase } from '../../components/Supabase';
-import useStore from '../../components/Zustand';
-import {useNavigate} from 'react-router-dom';
-function CreateShipmentStepper() {
-  const navigate=useNavigate();
-  const [active, setActive] = useState(0);
-const {user,addShipment} =useStore();
-const [visible, setVisible] = useState(false);
- 
+import { useNavigate, useLocation } from 'react-router-dom';
+import { uploadImageToSupabase } from '../../utils/supabase';
+import { IconTrash, IconPlus } from '@tabler/icons-react';
+import { useUser } from "@clerk/clerk-react";
+import PortSelect from '../../components/PortSelect';
+
+const emptyProduct = {
+  productName: '',
+  productType: '',
+  category: '',
+  subCategory: '',
+  dimensions: {
+    length: 0,
+    width: 0,
+    height: 0,
+    unit: 'cm'
+  },
+  weight: 0,
+  quantity: 0,
+  price: 0,
+  productImages: [],
+  handlingInstructions: '',
+};
+
+const validateProduct = (product) => {
+  const errors = {};
+  if (!product.productName) errors.productName = 'Product name is required';
+  if (!product.productType) errors.productType = 'Product type is required';
+  if (!product.category) errors.category = 'Category is required';
+  if (!product.subCategory) errors.subCategory = 'Sub category is required';
+  if (!product.dimensions.length || product.dimensions.length <= 0) errors.dimensions = 'Length must be greater than 0';
+  if (!product.dimensions.width || product.dimensions.width <= 0) errors.dimensions = 'Width must be greater than 0';
+  if (!product.dimensions.height || product.dimensions.height <= 0) errors.dimensions = 'Height must be greater than 0';
+  if (!product.weight || product.weight <= 0) errors.weight = 'Weight must be greater than 0';
+  if (!product.quantity || product.quantity <= 0) errors.quantity = 'Quantity must be greater than 0';
+  if (!product.price || product.price <= 0) errors.price = 'Price must be greater than 0';
+  return errors;
+};
+
+export default function CreateShipment() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const productTemplate = location.state?.productTemplate;
+  const isInstantShipment = location.state?.isInstantShipment;
+  const { user } = useUser();
+
+  const [visible, setVisible] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const [productImagesList, setProductImagesList] = useState([]);
+
   const form = useForm({
     initialValues: {
-     
-      productName: '',
-      productType: '',
-      category: '',
-      subCategory: '',
-      dimensions: '',
-      weight: 0,
-      quantity: 0,
-      origin: '',
-      destination: '',
-      price: 0,
+      companyName: '',
+      origin: null,
+      destination: null,
       estimatedDeliveryDate: '',
-      images: [],
-      commercialInvoice:'',
-      packingList:'',
-      certificateOfOrigin: '',
+      products: [{ ...emptyProduct }]
     },
     validate: {
-      productName: (value) => (value ? null : 'Product Name is required'),
-      productType: (value) => (value ? null : 'Product Type is required'),
-      category: (value) => (value ? null : 'Category is required'),
-      subCategory: (value) => (value ? null : 'Sub Category is required'),
-      dimensions: (value) => (/^\d+x\d+x\d+$/.test(value) ? null : 'Invalid dimensions format (e.g., 10x20x15)'),
-      weight: (value) => (value > 0 ? null : 'Weight must be greater than 0'),
-      quantity: (value) => (value > 0 ? null : 'Quantity must be greater than 0'),
-      origin: (value) => (value ? null : 'Origin is required'),
-      destination: (value) => (value ? null : 'Destination is required'),
-      price: (value) => (value > 0 ? null : 'Price must be greater than 0'),
-      estimatedDeliveryDate: (value) => (/\d{4}-\d{2}-\d{2}/.test(value) ? null : 'Invalid date format (YYYY-MM-DD)'),
+      companyName: (value) => (!value ? 'Company name is required' : null),
+      origin: (value) => (!value ? 'Origin port is required' : null),
+      destination: (value) => (!value ? 'Destination port is required' : null),
+      estimatedDeliveryDate: (value) => {
+        if (!value) return 'Delivery date is required';
+        const date = new Date(value);
+        if (isNaN(date.getTime())) return 'Invalid date';
+        if (date < new Date()) return 'Date must be in the future';
+        return null;
+      },
+      products: {
+        productName: (value) => (!value ? 'Product name is required' : null),
+        productType: (value) => (!value ? 'Product type is required' : null),
+        category: (value) => (!value ? 'Category is required' : null),
+        subCategory: (value) => (!value ? 'Sub category is required' : null),
+        weight: (value) => (value <= 0 ? 'Weight must be greater than 0' : null),
+        quantity: (value) => (value <= 0 ? 'Quantity must be greater than 0' : null),
+        price: (value) => (value <= 0 ? 'Price must be greater than 0' : null),
+        'dimensions.length': (value) => (value <= 0 ? 'Length must be greater than 0' : null),
+        'dimensions.width': (value) => (value <= 0 ? 'Width must be greater than 0' : null),
+        'dimensions.height': (value) => (value <= 0 ? 'Height must be greater than 0' : null),
+      }
     },
   });
 
-  const prevStep = () => setActive((current) => (current > 0 ? current - 1 : current));
-  
-   const handleCancel=()=>{
-    navigate('/dashboard/browseshipment')
-   }
-  
-  const handleSubmit = async () => {
-    const shipmentData = form.values;
-    try {
-      const response = await fetch(`${import.meta.env.VITE_API_URL}/shipments/createshipment`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({shipmentData,email:user.email}),
-      });
+  useEffect(() => {
+    if (user?.emailAddresses?.[0]?.emailAddress) {
+      fetchCompanyProfile();
+    }
+  }, [user]);
 
+  const fetchCompanyProfile = async () => {
+    try {
+      const response = await fetch(`${import.meta.env.VITE_API_URL}/seller/profile/${user.emailAddresses[0].emailAddress}`);
       if (response.ok) {
         const data = await response.json();
-        console.log(data);
-        addShipment((data.shipment));
-      } else {
-        const errorData = await response.json();
-        console.error('Backend Error:', errorData);
+        if (data.profile?.companyName) {
+          form.setFieldValue('companyName', data.profile.companyName);
+        }
       }
     } catch (error) {
-      console.error('Error during shipment creation:', error);
+      console.error('Error fetching company profile:', error);
+      notifications.show({
+        title: 'Error',
+        message: 'Failed to fetch company profile. Please enter company name manually.',
+        color: 'red'
+      });
     }
   };
 
-  const handleNext = async () => {
-    if (active === 0) {
-      if (form.validate().hasErrors) return; 
-      setActive(1);
-    } else if (active === 1) {
-      if (form.validate().hasErrors) return; 
+  const handleImageUpload = async (files, productIndex) => {
+    if (!files || files.length === 0) return;
+    if (files.length > 5) {
+      notifications.show({
+        title: 'Error',
+        message: 'You can only upload up to 5 images per product',
+        color: 'red'
+      });
+      return;
+    }
 
-      try {
-        setVisible(true);
-        const imageUrls = [];
-        let commercialInvoiceUrls ='';
-        let packingListUrls = '';
-        let certificateOfOriginUrls = '';
+    setIsUploading(true);
+    const uploadedUrls = [];
 
+    try {
+      for (const file of files) {
+        if (!file.type.match(/^image\/(jpeg|png)$/)) {
+          notifications.show({
+            title: 'Error',
+            message: 'Only JPEG and PNG images are allowed',
+            color: 'red'
+          });
+          continue;
+        }
+
+        if (file.size > 5 * 1024 * 1024) {
+          notifications.show({
+            title: 'Error',
+            message: 'Image size should not exceed 5MB',
+            color: 'red'
+          });
+          continue;
+        }
+
+        const publicUrl = await uploadImageToSupabase(file, 'shipment-images');
+        if (publicUrl) {
+          uploadedUrls.push(publicUrl);
+        }
+      }
+
+      if (uploadedUrls.length > 0) {
+        const newProductImagesList = [...productImagesList];
+        newProductImagesList[productIndex] = [
+          ...(newProductImagesList[productIndex] || []),
+          ...uploadedUrls
+        ];
+        setProductImagesList(newProductImagesList);
         
-        for (const image of form.values.images) {
-          const url = await uploadFile(image);
-          if (url) imageUrls.push(url);
-        }
+        notifications.show({
+          title: 'Success',
+          message: `Successfully uploaded ${uploadedUrls.length} image(s)`,
+          color: 'green'
+        });
+      }
+    } catch (error) {
+      console.error('Error handling image upload:', error);
+      notifications.show({
+        title: 'Error',
+        message: error.message || 'Failed to process images',
+        color: 'red'
+      });
+    } finally {
+      setIsUploading(false);
+    }
+  };
 
-       
-        for (const invoice of form.values.commercialInvoice) {
-          const url = await uploadFile(invoice);
-          if (url) commercialInvoiceUrls=url;
-        }
+  const handleSubmit = async () => {
+    const validation = form.validate();
+    if (validation.hasErrors) {
+      notifications.show({
+        title: 'Error',
+        message: 'Please fix all errors before submitting',
+        color: 'red'
+      });
+      return;
+    }
 
+    try {
+      setLoading(true);
+
+      const products = form.values.products.map((product, index) => ({
+        ...product,
+        productImages: productImagesList[index] || []
+      }));
+
+      const totalWeight = products.reduce((sum, product) => 
+        sum + (product.weight * product.quantity), 0);
+
+      const shipmentData = {
+        userId: user.id,
+        email: user.emailAddresses[0].emailAddress,
+        companyName: form.values.companyName,
+        products,
+        origin: form.values.origin,
+        destination: form.values.destination,
+        transportModes: ['sea'],
+        estimatedDeliveryDate: form.values.estimatedDeliveryDate,
+        totalWeight
+      };
+
+      const response = await fetch(`${import.meta.env.VITE_API_URL}/shipments/create`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(shipmentData),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to create shipment');
+      }
+
+      notifications.show({
+        title: 'Success',
+        message: 'Shipment created successfully',
+        color: 'green',
+      });
+
+      navigate('/dashboard/shipments');
+    } catch (error) {
+      console.error('Error creating shipment:', error);
+      notifications.show({
+        title: 'Error',
+        message: error.message || 'Failed to create shipment',
+        color: 'red',
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (productTemplate && isInstantShipment) {
+      form.setValues({
+        ...form.values,
+        products: [{
+          productName: productTemplate.name || '',
+          productType: productTemplate.type || '',
+          category: productTemplate.category?.[0] || '',
+          subCategory: productTemplate.subCategory || '',
+          dimensions: productTemplate.dimensions || { length: 0, width: 0, height: 0, unit: 'cm' },
+          weight: productTemplate.weight || 0,
+          quantity: 1,
+          price: productTemplate.price || 0,
+          handlingInstructions: productTemplate.handlingInstructions || '',
+        }],
+        origin: productTemplate.origin || null,
+        destination: productTemplate.destination || null
+      });
+      setProductImagesList([productTemplate.images || []]);
+    }
+  }, [productTemplate, isInstantShipment]);
+
+  const addProduct = () => {
+    form.insertListItem('products', { ...emptyProduct });
+  };
+
+  const removeProduct = (index) => {
+    form.removeListItem('products', index);
+    const newProductImagesList = [...productImagesList];
+    newProductImagesList.splice(index, 1);
+    setProductImagesList(newProductImagesList);
+  };
+
+  const renderProductForm = (productIndex) => {
+    const product = form.values.products[productIndex];
     
-        for (const list of form.values.packingList) {
-          const url = await uploadFile(list);
-          if (url) packingListUrls=url;
-        }
+    return (
+      <Stack key={productIndex} spacing="md">
+        <Group position="apart">
+          <Title order={4}>Product {productIndex + 1}</Title>
+          {form.values.products.length > 1 && (
+            <ActionIcon color="red" onClick={() => removeProduct(productIndex)}>
+              <IconTrash size={16} />
+            </ActionIcon>
+          )}
+        </Group>
 
-       
-        for (const certificate of form.values.certificateOfOrigin) {
-          const url = await uploadFile(certificate);
-          if (url) certificateOfOriginUrls=url;
-        }
+        <TextInput
+          required
+          label="Product Name"
+          {...form.getInputProps(`products.${productIndex}.productName`)}
+        />
 
-       
-        form.setFieldValue('images', imageUrls);
-        form.setFieldValue('commercialInvoice', commercialInvoiceUrls);
-        form.setFieldValue('packingList', packingListUrls);
-        form.setFieldValue('certificateOfOrigin', certificateOfOriginUrls);
+        <TextInput
+          required
+          label="Product Type"
+          {...form.getInputProps(`products.${productIndex}.productType`)}
+        />
 
-        setActive(2);
-        
-      } catch (error) {
-        console.error('Error uploading files:', error);
-      }
-      finally{
-        setVisible(false);
-      }
-    } 
-    else if(active==2){
-      handleSubmit();
+        <TextInput
+          required
+          label="Category"
+          {...form.getInputProps(`products.${productIndex}.category`)}
+        />
 
-      navigate('/dashboard/browseshipments');
-    }
-  };
+        <TextInput
+          required
+          label="Sub Category"
+          {...form.getInputProps(`products.${productIndex}.subCategory`)}
+        />
 
-  async function uploadFile(file) {  
-    const uniqueFileName = `${Date.now()}_${file.name}`;
-    const { data, error } = await supabase.storage.from('filesStore').upload(`files/${uniqueFileName}`, file);
-    if (error) {
-      console.error(error);
-      return null;
-    }
-   const publicURL=`https://usogemhitjxzpmcfxvap.supabase.co/storage/v1/object/public/filesStore/files/${uniqueFileName}`
-    console.log(publicURL);
-    return publicURL; 
-  }
+        <Title order={6}>Dimensions</Title>
+        <Group grow>
+          <NumberInput
+            required
+            label="Length"
+            {...form.getInputProps(`products.${productIndex}.dimensions.length`)}
+            min={0}
+          />
+          <NumberInput
+            required
+            label="Width"
+            {...form.getInputProps(`products.${productIndex}.dimensions.width`)}
+            min={0}
+          />
+          <NumberInput
+            required
+            label="Height"
+            {...form.getInputProps(`products.${productIndex}.dimensions.height`)}
+            min={0}
+          />
+          <Select
+            label="Unit"
+            {...form.getInputProps(`products.${productIndex}.dimensions.unit`)}
+            data={[
+              { value: 'cm', label: 'Centimeters' },
+              { value: 'in', label: 'Inches' },
+              { value: 'm', label: 'Meters' }
+            ]}
+          />
+        </Group>
 
-  const validateFile = (file, type) => {
-    return file.type.startsWith('image/');
+        <Group grow>
+          <NumberInput
+            required
+            label="Weight (kg)"
+            {...form.getInputProps(`products.${productIndex}.weight`)}
+            min={0}
+          />
+
+          <NumberInput
+            required
+            label="Quantity"
+            {...form.getInputProps(`products.${productIndex}.quantity`)}
+            min={1}
+          />
+
+          <NumberInput
+            required
+            label="Price"
+            {...form.getInputProps(`products.${productIndex}.price`)}
+            min={0}
+          />
+        </Group>
+
+        <TextInput
+          label="Handling Instructions"
+          {...form.getInputProps(`products.${productIndex}.handlingInstructions`)}
+        />
+
+        {/* Only show image upload if not using a product template */}
+        {!isInstantShipment && (
+          <>
+            <FileInput
+              label="Product Images"
+              accept="image/png,image/jpeg"
+              multiple
+              onChange={(files) => handleImageUpload(files, productIndex)}
+            />
+
+            {productImagesList[productIndex]?.length > 0 && (
+              <SimpleGrid cols={4} spacing="xs">
+                {productImagesList[productIndex].map((image, imgIndex) => (
+                  <Card key={imgIndex}>
+                    <Card.Section>
+                      <Image
+                        src={image}
+                        height={80}
+                        alt={`Product ${productIndex + 1} image ${imgIndex + 1}`}
+                      />
+                    </Card.Section>
+                    <ActionIcon
+                      color="red"
+                      variant="subtle"
+                      onClick={() => {
+                        const newProductImagesList = [...productImagesList];
+                        newProductImagesList[productIndex] = newProductImagesList[productIndex].filter((_, i) => i !== imgIndex);
+                        setProductImagesList(newProductImagesList);
+                      }}
+                    >
+                      <IconTrash size={16} />
+                    </ActionIcon>
+                  </Card>
+                ))}
+              </SimpleGrid>
+            )}
+          </>
+        )}
+
+        {/* Show template images if using a product template */}
+        {isInstantShipment && productImagesList[productIndex]?.length > 0 && (
+          <>
+            <Text size="sm" weight={500}>Product Images from Template</Text>
+            <SimpleGrid cols={4} spacing="xs">
+              {productImagesList[productIndex].map((image, imgIndex) => (
+                <Card key={imgIndex}>
+                  <Card.Section>
+                    <Image
+                      src={image}
+                      height={80}
+                      alt={`Product ${productIndex + 1} image ${imgIndex + 1}`}
+                    />
+                  </Card.Section>
+                </Card>
+              ))}
+            </SimpleGrid>
+          </>
+        )}
+
+        {productIndex < form.values.products.length - 1 && <Divider my="xl" />}
+      </Stack>
+    );
   };
 
   return (
-    <>
-    
     <Box pos="relative">
-        <LoadingOverlay visible={visible} zIndex={1000} overlayProps={{ radius: "sm", blur: 2 }} />
-        <Stepper active={active} onStepClick={setActive} allowNextStepsSelect={false}>
-        <Stepper.Step label="Enter product details" description="Enter product details">
-          <form>
-            <TextInput label="Product Name" placeholder="Enter product name" withAsterisk {...form.getInputProps('productName')} />
-            <TextInput label="Product Type" placeholder="Enter product type" withAsterisk {...form.getInputProps('productType')} />
-            <TextInput label="Category" placeholder="Enter product category" withAsterisk {...form.getInputProps('category')} />
-            <TextInput label="Sub Category" placeholder="Enter sub category" withAsterisk {...form.getInputProps('subCategory')} />
-            <TextInput
-              label="Dimensions"
-              placeholder="Enter dimensions (e.g., 10x20x15 cm)"
-              withAsterisk
-              {...form.getInputProps('dimensions')}
-            />
-            <NumberInput label="Weight" placeholder="Enter weight (kg)" withAsterisk {...form.getInputProps('weight')} />
-            <NumberInput label="Quantity" placeholder="Enter quantity" withAsterisk {...form.getInputProps('quantity')} />
-            <TextInput label="Origin" placeholder="Enter origin location" withAsterisk {...form.getInputProps('origin')} />
-            <TextInput label="Destination" placeholder="Enter destination location" withAsterisk {...form.getInputProps('destination')} />
-            <NumberInput label="Price" placeholder="Enter price" withAsterisk {...form.getInputProps('price')} />
-            <TextInput
-              label="Estimated Delivery Date"
-              placeholder="Enter estimated delivery date (YYYY-MM-DD)"
-              withAsterisk
-              {...form.getInputProps('estimatedDeliveryDate')}
-            />
+      <LoadingOverlay visible={visible || isUploading} zIndex={1000} overlayProps={{ radius: "sm", blur: 2 }} />
+      <Container size="xl">
+        <Paper shadow="xs" p="md">
+          <form onSubmit={(e) => e.preventDefault()}>
+            <Stack spacing="md">
+              <TextInput
+                required
+                label="Company Name"
+                {...form.getInputProps('companyName')}
+              />
+
+              <Group grow>
+                <PortSelect
+                  label="Origin"
+                  required
+                  value={form.values.origin}
+                  onChange={(value) => form.setFieldValue('origin', value)}
+                />
+                <PortSelect
+                  label="Destination"
+                  required
+                  value={form.values.destination}
+                  onChange={(value) => form.setFieldValue('destination', value)}
+                />
+              </Group>
+
+              <TextInput
+                required
+                type="date"
+                label="Estimated Delivery Date"
+                {...form.getInputProps('estimatedDeliveryDate')}
+              />
+
+              {form.values.products.map((_, index) => renderProductForm(index))}
+
+              <Group position="center">
+                <Button
+                  variant="outline"
+                  onClick={addProduct}
+                  leftIcon={<IconPlus size={16} />}
+                >
+                  Add Another Product
+                </Button>
+              </Group>
+
+              <Group position="center">
+                <Button
+                  onClick={handleSubmit}
+                  loading={loading}
+                >
+                  Create Shipment
+                </Button>
+              </Group>
+            </Stack>
           </form>
-        </Stepper.Step>
-
-        <Stepper.Step label="Upload Files" description="Upload images and documents">
-         
-          <FileInput
-            label="Upload Images"
-            multiple
-            onChange={(files) => {
-              const validFiles = Array.from(files).filter((file) => validateFile(file, 'image'));
-              form.setFieldValue('images', validFiles);
-            }}
-            error={form.errors.images}
-          />
-
-          
-          <FileInput
-            label="Upload Commercial Invoice"
-           multiple
-            onChange={(files) => {
-              const validFiles = Array.from(files).filter((file) => validateFile(file, 'commercialInvoice'));
-              form.setFieldValue('commercialInvoice', validFiles);
-            }}
-            error={form.errors.commercialInvoice}
-          />
-
-         
-          <FileInput
-            label="Upload Packing List"
-            multiple
-            onChange={(files) => {
-              const validFiles = Array.from(files).filter((file) => validateFile(file, 'packingList'));
-              form.setFieldValue('packingList', validFiles);
-            }}
-            error={form.errors.packingList}
-          />
-
-          
-          <FileInput
-            label="Upload Certificate of Origin"
-            multiple
-            onChange={(files) => {
-              const validFiles = Array.from(files).filter((file) => validateFile(file, 'certificateOfOrigin'));
-              form.setFieldValue('certificateOfOrigin', validFiles);
-            }}
-            error={form.errors.certificateOfOrigin}
-          />
-        </Stepper.Step>
-
-        <Stepper.Completed>Click Next to submit the shipment</Stepper.Completed>
-      </Stepper>
-
-      <Group justify="center" mt="xl">
-        <Button color="red" onClick={handleCancel}>
-          Cancel
-        </Button>
-        <Button variant="default" onClick={prevStep}>
-          Back
-        </Button>
-        <Button onClick={handleNext}>Next step</Button>
-      </Group>
-      </Box>
-
-
-
-      
-    </>
+        </Paper>
+      </Container>
+    </Box>
   );
 }
-
-export default CreateShipmentStepper;

@@ -1,8 +1,8 @@
-import { Card, Image, Text, Badge, Button, Group, SimpleGrid } from '@mantine/core';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useState, useEffect } from 'react';
+import { Card, Image, Text, Badge, Button, Group, SimpleGrid } from '@mantine/core';
 
-function AllShipmentsCarrier() {
+const AllShipmentsCarrier = () => {
   const navigate = useNavigate();
   const [shipments, setShipments] = useState([]);
 
@@ -17,6 +17,7 @@ function AllShipmentsCarrier() {
         throw new Error('Failed to fetch shipments');
       }
       const data = await response.json();
+      console.log('Fetched shipments:', data.shipments);
       setShipments(data.shipments);
     } catch (error) {
       console.error('Error fetching available shipments:', error);
@@ -24,7 +25,12 @@ function AllShipmentsCarrier() {
   };
 
   const handleCardClick = (shipment) => {
-    navigate(`/dashboard/shipment/${shipment._id}`, { state: { shipmentData: shipment } });
+    console.log('Shipment data before navigation:', shipment);
+    navigate(`/dashboard/shipment/${shipment._id}`, { 
+      state: { 
+        shipmentData: shipment
+      }
+    });
   };
 
   return (
@@ -83,6 +89,6 @@ function AllShipmentsCarrier() {
       )}
     </SimpleGrid>
   );
-}
+};
 
-export default AllShipmentsCarrier;
+export default AllShipmentsCarrier; 

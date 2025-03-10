@@ -14,24 +14,9 @@ import {
   Card,
   Image,
   SimpleGrid,
-  NumberInput,
-  Select,
-  Textarea,
-  Modal,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import BidsTable from '../../components/BidsTable';
-
-const CURRENCIES = [
-  { value: 'USD', label: 'USD - US Dollar' },
-  { value: 'EUR', label: 'EUR - Euro' },
-  { value: 'GBP', label: 'GBP - British Pound' },
-  { value: 'JPY', label: 'JPY - Japanese Yen' },
-  { value: 'AUD', label: 'AUD - Australian Dollar' },
-  { value: 'CAD', label: 'CAD - Canadian Dollar' },
-  { value: 'CNY', label: 'CNY - Chinese Yuan' },
-  { value: 'INR', label: 'INR - Indian Rupee' },
-];
 
 const formatLocation = (location) => {
   if (!location) return '';
@@ -47,10 +32,6 @@ export default function ShipmentPage() {
   const { user } = useUser();
   const [shipment, setShipment] = useState(location.state?.shipmentData || null);
   const [loading, setLoading] = useState(false);
-  const [bidModalOpen, setBidModalOpen] = useState(false);
-  const [bidAmount, setBidAmount] = useState(0);
-  const [bidCurrency, setBidCurrency] = useState('USD');
-  const [bidNotes, setBidNotes] = useState('');
 
   useEffect(() => {
     if (!shipment?._id) {
@@ -59,17 +40,6 @@ export default function ShipmentPage() {
       fetchShipmentDetails(shipmentId);
     }
   }, [location]);
-
-  // Add polling for bid updates
-  useEffect(() => {
-    if (shipment?._id) {
-      const pollInterval = setInterval(() => {
-        fetchShipmentDetails(shipment._id);
-      }, 10000); // Poll every 10 seconds
-
-      return () => clearInterval(pollInterval);
-    }
-  }, [shipment?._id]);
 
   const fetchShipmentDetails = async (shipmentId) => {
     try {
@@ -87,46 +57,57 @@ export default function ShipmentPage() {
     }
   };
 
-  const handlePlaceBid = async () => {
+  const handleAcceptBid = async (bidId) => {
     try {
       setLoading(true);
-
-      const bidData = {
-        amount: bidAmount,
-        currency: bidCurrency,
-        notes: bidNotes,
-        carrierId: user.id,
-        carrierEmail: user.emailAddresses[0].emailAddress
-      };
-
-      const response = await fetch(`${import.meta.env.VITE_API_URL}/shipments/${shipment._id}/bids`, {
+      const response = await fetch(`${import.meta.env.VITE_API_URL}/shipments/${shipment._id}/bids/${bidId}/accept`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(bidData),
       });
 
-      if (!response.ok) throw new Error('Failed to place bid');
+      if (!response.ok) throw new Error('Failed to accept bid');
 
-      // Refresh shipment details to show new bid
+      // Refresh shipment details
       await fetchShipmentDetails(shipment._id);
 
       notifications.show({
         title: 'Success',
-        message: 'Bid placed successfully',
+        message: 'Bid accepted successfully',
         color: 'green',
       });
-
-      // Reset bid form
-      setBidAmount(0);
-      setBidNotes('');
-      setBidModalOpen(false);
     } catch (error) {
-      console.error('Error placing bid:', error);
+      console.error('Error accepting bid:', error);
       notifications.show({
         title: 'Error',
-        message: error.message || 'Failed to place bid',
+        message: 'Failed to accept bid',
+        color: 'red',
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRejectBid = async (bidId) => {
+    try {
+      setLoading(true);
+      const response = await fetch(`${import.meta.env.VITE_API_URL}/shipments/${shipment._id}/bids/${bidId}/reject`, {
+        method: 'POST',
+      });
+
+      if (!response.ok) throw new Error('Failed to reject bid');
+
+      // Refresh shipment details
+      await fetchShipmentDetails(shipment._id);
+
+      notifications.show({
+        title: 'Success',
+        message: 'Bid rejected successfully',
+        color: 'green',
+      });
+    } catch (error) {
+      console.error('Error rejecting bid:', error);
+      notifications.show({
+        title: 'Error',
+        message: 'Failed to reject bid',
         color: 'red',
       });
     } finally {
@@ -142,10 +123,7 @@ export default function ShipmentPage() {
     );
   }
 
-  const isCarrier = user?.publicMetadata?.role === 'carrier';
-  const hasPlacedBid = shipment.bids?.some(
-    bid => bid.carrier.email === user?.emailAddresses?.[0]?.emailAddress
-  );
+  const isOwner = user?.emailAddresses?.[0]?.emailAddress === shipment.email;
 
   return (
     <Container size="xl">
@@ -179,14 +157,6 @@ export default function ShipmentPage() {
                shipment.verifiedShipment ? 'Verified' : 
                'Pending'}
             </Badge>
-            {isCarrier && !hasPlacedBid && !shipment.isCompleted && (
-              <Button
-                onClick={() => setBidModalOpen(true)}
-                loading={loading}
-              >
-                Place Bid
-              </Button>
-            )}
           </Group>
 
           <Grid>
@@ -197,21 +167,13 @@ export default function ShipmentPage() {
                   <Group grow>
                     <Stack spacing="xs">
                       <Text size="sm" color="dimmed">Origin</Text>
-                      <Text>{typeof shipment.origin === 'object' ? shipment.origin.name : shipment.origin}</Text>
-                      <Text size="sm">
-                        {typeof shipment.origin === 'object' 
-                          ? `${shipment.origin.city || ''}, ${shipment.origin.country || ''}`
-                          : ''}
-                      </Text>
+                      <Text>{shipment.origin.name}</Text>
+                      <Text size="sm">{shipment.origin.city}, {shipment.origin.country}</Text>
                     </Stack>
                     <Stack spacing="xs">
                       <Text size="sm" color="dimmed">Destination</Text>
-                      <Text>{typeof shipment.destination === 'object' ? shipment.destination.name : shipment.destination}</Text>
-                      <Text size="sm">
-                        {typeof shipment.destination === 'object'
-                          ? `${shipment.destination.city || ''}, ${shipment.destination.country || ''}`
-                          : ''}
-                      </Text>
+                      <Text>{shipment.destination.name}</Text>
+                      <Text size="sm">{shipment.destination.city}, {shipment.destination.country}</Text>
                     </Stack>
                   </Group>
                 </Card>
@@ -259,7 +221,7 @@ export default function ShipmentPage() {
                 </Card>
 
                 <BidsTable
-                  bids={shipment.bids || []}
+                  bids={shipment.bids}
                   onAcceptBid={handleAcceptBid}
                   onRejectBid={handleRejectBid}
                   isOwner={isOwner}
@@ -269,48 +231,6 @@ export default function ShipmentPage() {
           </Grid>
         </Stack>
       </Paper>
-
-      {/* Bid Modal */}
-      <Modal
-        opened={bidModalOpen}
-        onClose={() => setBidModalOpen(false)}
-        title="Place a Bid"
-      >
-        <Stack spacing="md">
-          <Group grow>
-            <NumberInput
-              label="Bid Amount"
-              value={bidAmount}
-              onChange={(value) => setBidAmount(value)}
-              min={0}
-              precision={2}
-              required
-            />
-            <Select
-              label="Currency"
-              data={CURRENCIES}
-              value={bidCurrency}
-              onChange={setBidCurrency}
-              required
-            />
-          </Group>
-          
-          <Textarea
-            label="Notes"
-            value={bidNotes}
-            onChange={(e) => setBidNotes(e.target.value)}
-            placeholder="Add any additional notes or terms..."
-          />
-
-          <Button
-            onClick={handlePlaceBid}
-            loading={loading}
-            disabled={bidAmount <= 0}
-          >
-            Submit Bid
-          </Button>
-        </Stack>
-      </Modal>
     </Container>
   );
-}
+} 

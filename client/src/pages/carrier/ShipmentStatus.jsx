@@ -78,22 +78,59 @@ const handleVerified=async()=>{
 
 }
   const renderShipmentDetails = () => {
+    const formatLocation = (location) => {
+      if (typeof location === 'object') {
+        const { name, city, country } = location;
+        return `${city}, ${country} (${name})`;
+      }
+      return location || '';
+    };
+
+    const formatDimensions = (dimensions) => {
+      if (typeof dimensions === 'object') {
+        const { length, width, height, unit } = dimensions;
+        return `${length}x${width}x${height} ${unit}`;
+      }
+      return dimensions || '';
+    };
+
     const fields = [
-      { label: 'Product Name', value: shipmentData.productName },
-      { label: 'Category', value: shipmentData.category },
-      { label: 'Sub Category', value: shipmentData.subCategory },
-      { label: 'Origin', value: shipmentData.origin },
-      { label: 'Destination', value: shipmentData.destination },
-      { label: 'Quantity', value: shipmentData.quantity },
-      { label: 'Price', value: shipmentData.price },
-      { label: 'Weight', value: shipmentData.weight },
-      { label: 'Dimensions', value: shipmentData.dimensions },
-      { label: 'Estimated Delivery Date', value: shipmentData.estimatedDeliveryDate }
+      { label: 'Company Name', value: shipmentData.companyName || '' },
+      { label: 'Origin', value: formatLocation(shipmentData.origin) },
+      { label: 'Destination', value: formatLocation(shipmentData.destination) },
+      { label: 'Total Weight', value: `${shipmentData.totalWeight || 0} kg` },
+      { label: 'Estimated Delivery', value: new Date(shipmentData.estimatedDeliveryDate).toLocaleDateString() },
     ];
 
-    return fields.map(({ label, value }, index) => (
-      <TextInput key={index} label={label} placeholder={value} disabled styles={{ input: { cursor: 'default' } }} />
-    ));
+    // Add product details if available
+    if (shipmentData.products && shipmentData.products.length > 0) {
+      const product = shipmentData.products[0]; // Display first product for now
+      fields.push(
+        { label: 'Product Name', value: product.productName || '' },
+        { label: 'Category', value: product.category || '' },
+        { label: 'Sub Category', value: product.subCategory || '' },
+        { label: 'Product Type', value: product.productType || '' },
+        { label: 'Weight', value: `${product.weight || 0} kg` },
+        { label: 'Quantity', value: product.quantity || 0 },
+        { label: 'Price', value: `$${product.price || 0}` },
+        { label: 'Dimensions', value: formatDimensions(product.dimensions) },
+        { label: 'Handling Instructions', value: product.handlingInstructions || '' }
+      );
+    }
+
+    return (
+      <Grid>
+        {fields.map((field, index) => (
+          <Grid.Col span={6} key={index}>
+            <TextInput
+              label={field.label}
+              value={field.value}
+              readOnly
+            />
+          </Grid.Col>
+        ))}
+      </Grid>
+    );
   };
   const items = [
     { title: 'Shipments', href: '/dashboard/myshipments' }, 
