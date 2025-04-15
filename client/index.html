@@ -6,9 +6,22 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>CrossSync</title>
     <meta name="referrer" content="no-referrer-when-downgrade">
+    <!-- Add Hathor Wallet SDK -->
+    <script src="https://cdn.jsdelivr.net/npm/@hathor/wallet-lib@latest/dist/hathor-lib.js"></script>
   </head>
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
+    <script>
+      // Initialize Hathor Wallet
+      window.addEventListener('load', function() {
+        if (typeof window.hathorLib !== 'undefined') {
+          window.hathorLib.config({
+            network: 'mainnet',
+            serverUrl: 'https://node.hathor.network/v1a/',
+          });
+        }
+      });
+    </script>
   </body>
 </html>

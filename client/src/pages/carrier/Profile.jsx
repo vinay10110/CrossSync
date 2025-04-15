@@ -53,7 +53,7 @@ const certificationTypes = [
 ];
 
 const Profile = () => {
-  const { user } = useStore();
+
   const [activeTab, setActiveTab] = useState('business');
   const [isEditing, setIsEditing] = useState(false);
   const [savedVehicles, setSavedVehicles] = useState([]);

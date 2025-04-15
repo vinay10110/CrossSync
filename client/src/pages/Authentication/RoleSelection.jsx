@@ -44,28 +44,50 @@ const RoleSelection = () => {
 
     setIsUpdating(true);
     try {
-      const updatedUser = await user.update({
+      // First update Clerk user metadata
+      await user.update({
         unsafeMetadata: {
           role: role
         }
       });
 
-      console.log('Updated user:', updatedUser);
-      
+      // Then create user in MongoDB
+      const response = await fetch(`${import.meta.env.VITE_API_URL}/users/login`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          fullUser: {
+            id: user.id,
+            email: user.emailAddresses[0].emailAddress,
+            firstName: user.firstName,
+            lastName: user.lastName,
+            imageUrl: user.imageUrl,
+          },
+          userRole: role
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to create user profile');
+      }
+
+      const userData = await response.json();
+      console.log('User created:', userData);
+
       notifications.show({
         title: 'Success',
         message: `Role set successfully as ${role}`,
         color: 'green'
       });
 
-      // Redirect immediately after success
       navigate('/dashboard');
-
     } catch (error) {
-      console.error('Error updating user role:', error);
+      console.error('Error creating user:', error);
       notifications.show({
         title: 'Error',
-        message: error.message || 'Failed to update role. Please try again.',
+        message: error.message || 'Failed to set up user profile. Please try again.',
         color: 'red'
       });
     } finally {

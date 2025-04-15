@@ -1,9 +1,10 @@
 const express = require('express');
 const Shipments = require('../models/Shipments');
 const User = require('../models/User');
+const Document = require('../models/Documents');
 const router = express.Router();
 const { sendEmail } = require('../Email/EmailTemplate');
-
+const searoutesDocs=require('@api/searoutes-docs');
 const formatLocation = (location) => {
   if (typeof location === 'object') {
     return `${location.city}, ${location.country} (${location.name})`;
@@ -549,7 +550,7 @@ router.get('/carrier-stats/:carrierId', async (req, res) => {
 // Add this new route to get accepted bids
 router.get('/accepted-bids', async (req, res) => {
   try {
-    const userId = req.headers.authorization?.split(' ')[1];
+    const userId = req.headers.authorization;
     console.log('Received request for accepted bids with userId:', userId);
     
     if (!userId) {
@@ -560,8 +561,8 @@ router.get('/accepted-bids', async (req, res) => {
     // First find the user to get both ID and email
     const user = await User.findOne({
       $or: [
-        { userId: userId },
-        { email: userId }
+        { clerkId: userId },
+       
       ]
     });
 
@@ -662,6 +663,160 @@ router.get('/accepted-bids', async (req, res) => {
       error: error.message,
       stack: error.stack 
     });
+  }
+});
+
+// Add this new route before module.exports
+router.get('/getallroutes', async (req, res) => {
+  try {
+    searoutesDocs.auth('fJL790ghkr4CDfv5nlcrr5uYb7PMXGiH2nvBJqJQ');
+    
+    searoutesDocs.getPlanSeaRoute({
+      continuousCoordinates: 'true',
+      allowIceAreas: 'false',
+      avoidHRA: 'false',
+      avoidSeca: 'false',
+      locations: '-122.4194,37.7749;-74.006,40.7128', // San Francisco to New York
+      'accept-version': '2.0'
+    })
+    .then(({ data }) => {
+      console.log(data);
+      res.json(data);
+    })
+    .catch(err => {
+      console.error(err);
+      res.status(500).json({ error: 'Failed to fetch sea routes', details: err.message });
+    });
+  } catch (error) {
+    console.error('Error fetching sea routes:', error);
+    res.status(500).json({ 
+      error: 'Failed to fetch sea routes',
+      details: error.message 
+    });
+  }
+});
+
+// Update the document upload route to handle Clerk ID
+router.post('/:shipmentId/documents', async (req, res) => {
+  try {
+    const { shipmentId } = req.params;
+    const { documentUrl, documentType, clerkId } = req.body;
+        console.log(shipmentId, documentUrl, documentType, clerkId);
+    // Verify shipment exists
+    const shipment = await Shipments.findById(shipmentId);
+    if (!shipment) {
+      return res.status(404).json({ error: 'Shipment not found' });
+    }
+
+    // Find user by Clerk ID
+    const user = await User.findOne({ clerkId });
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // Create new document
+    const document = new Document({
+      shipmentId,
+      documentType,
+      documentUrl,
+      uploadedBy: user._id // Use MongoDB ObjectId from User model
+    });
+
+    await document.save();
+
+    // If this is the last required document, mark shipment as verified
+    const requiredDocs = ['commercial_invoice', 'certificate_of_origin', 'packing_list'];
+    const uploadedDocs = await Document.find({ shipmentId });
+    const uploadedDocTypes = uploadedDocs.map(doc => doc.documentType);
+    
+    const allDocsUploaded = requiredDocs.every(docType => 
+      uploadedDocTypes.includes(docType)
+    );
+
+    if (allDocsUploaded) {
+      shipment.verifiedShipment = true;
+      await shipment.save();
+    }
+
+    res.status(201).json({ document, isShipmentVerified: allDocsUploaded });
+  } catch (error) {
+    console.error('Error uploading document:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get documents for a shipment
+router.get('/:shipmentId/documents', async (req, res) => {
+  try {
+    const { shipmentId } = req.params;
+    const documents = await Document.find({ shipmentId })
+      .populate('uploadedBy', 'email companyName')
+      .sort('-uploadedAt');
+
+    res.json({ documents });
+  } catch (error) {
+    console.error('Error fetching documents:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Delete document
+router.delete('/:shipmentId/documents/:documentId', async (req, res) => {
+  try {
+    const { shipmentId, documentId } = req.params;
+    
+    const document = await Document.findOneAndDelete({
+      _id: documentId,
+      shipmentId
+    });
+
+    if (!document) {
+      return res.status(404).json({ error: 'Document not found' });
+    }
+
+    // Update shipment verification status
+    const shipment = await Shipments.findById(shipmentId);
+    if (shipment) {
+      const remainingDocs = await Document.find({ shipmentId });
+      const requiredDocs = ['commercial_invoice', 'certificate_of_origin', 'packing_list'];
+      const uploadedDocTypes = remainingDocs.map(doc => doc.documentType);
+      
+      const allDocsPresent = requiredDocs.every(docType => 
+        uploadedDocTypes.includes(docType)
+      );
+
+      if (!allDocsPresent && shipment.verifiedShipment) {
+        shipment.verifiedShipment = false;
+        await shipment.save();
+      }
+    }
+
+    res.json({ message: 'Document deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting document:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Delete document
+router.delete('/:id/documents/:type', async (req, res) => {
+  try {
+    const { id, type } = req.params;
+    const shipment = await Shipments.findById(id);
+    
+    if (!shipment) {
+      return res.status(404).json({ message: 'Shipment not found' });
+    }
+
+    if (shipment.documents && shipment.documents[type]) {
+      delete shipment.documents[type];
+      await shipment.save();
+      return res.status(200).json({ message: 'Document deleted successfully' });
+    }
+
+    res.status(404).json({ message: 'Document not found' });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
   }
 });
 

@@ -17,6 +17,7 @@ function AllShipmentsCarrier() {
         throw new Error('Failed to fetch shipments');
       }
       const data = await response.json();
+     
       setShipments(data.shipments);
     } catch (error) {
       console.error('Error fetching available shipments:', error);
@@ -41,16 +42,16 @@ function AllShipmentsCarrier() {
         >
           <Card.Section>
             <Image
-              src={item.productImages?.[0] || 'https://placehold.co/600x400?text=No+Image'}
+              src={item.products?.[0]?.productImages?.[0] || 'https://placehold.co/600x400?text=No+Image'}
               height={160}
-              alt={item.productName}
+              alt={item.products?.[0]?.productName || 'Product'}
               fallbackSrc="https://placehold.co/600x400?text=No+Image"
             />
           </Card.Section>
 
           <Group justify="space-between" mt="md" mb="xs">
-            <Text fw={500}>{item.productName}</Text>
-            <Badge color="blue">{item.category}</Badge>
+            <Text fw={500}>{item.products?.[0]?.productName || 'Untitled Product'}</Text>
+            <Badge color="blue">{item.products?.[0]?.category || 'Uncategorized'}</Badge>
           </Group>
 
           <Text size="sm" color="dimmed" mb="md">
@@ -64,10 +65,10 @@ function AllShipmentsCarrier() {
 
           <Group justify="space-between" mt="xs">
             <Text size="sm" c="dimmed">
-              Weight: {item.weight} kg
+              Weight: {item.products?.[0]?.weight || 0} kg
             </Text>
             <Text size="sm" c="dimmed">
-              Quantity: {item.quantity}
+              Quantity: {item.products?.[0]?.quantity || 0}
             </Text>
           </Group>
 

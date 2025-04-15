@@ -18,38 +18,26 @@ function MyShipments() {
   }, [user?.emailAddresses]);
 
   const fetchMyShipments = async () => {
-    if (!user?.emailAddresses?.[0]?.emailAddress) {
-      console.log('No user email available');
-      return;
-    }
-
     try {
       setLoading(true);
-      console.log('Fetching accepted bids for user:', {
-        id: user.id,
-        email: user.emailAddresses[0].emailAddress
-      });
+    
 
-      // First try to fetch accepted bids
-      const acceptedBidsResponse = await fetch(`${import.meta.env.VITE_API_URL}/shipments/accepted-bids`, {
+      // Fix: Add 'Bearer ' prefix and use proper header format
+      const response = await fetch(`${import.meta.env.VITE_API_URL}/shipments/accepted-bids`, {
         headers: {
-          'Authorization': `Bearer ${user.id}`,
+          'Authorization': `${user.id}`,
           'Content-Type': 'application/json'
         }
       });
-      
-      if (!acceptedBidsResponse.ok) {
-        const errorData = await acceptedBidsResponse.json().catch(() => ({}));
-        console.error('Failed to fetch accepted bids:', {
-          status: acceptedBidsResponse.status,
-          statusText: acceptedBidsResponse.statusText,
-          error: errorData
-        });
-        throw new Error(`Failed to fetch accepted bids: ${errorData.message || acceptedBidsResponse.statusText}`);
+        console.log('Response:', response); // Debugging line
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+       
+        throw new Error(`Failed to fetch accepted bids: ${errorData.message || response.statusText}`);
       }
 
-      const acceptedBidsData = await acceptedBidsResponse.json();
-      console.log('Received accepted bids data:', acceptedBidsData);
+      const acceptedBidsData = await response.json();
+     
 
       if (acceptedBidsData.acceptedBids?.length > 0) {
         const formattedShipments = acceptedBidsData.acceptedBids.map(bid => {
@@ -78,16 +66,12 @@ function MyShipments() {
             seller: bid.seller || {}
           };
           
-          console.log('Formatted shipment:', {
-            id: formatted._id,
-            productCount: formatted.products.length,
-            firstProductName: firstProduct.productName
-          });
+          
           
           return formatted;
         });
         
-        console.log(`Setting ${formattedShipments.length} shipments`);
+       
         setShipments(formattedShipments);
       } else {
         console.log('No accepted bids found in response');

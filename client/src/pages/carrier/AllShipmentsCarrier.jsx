@@ -8,6 +8,7 @@ const AllShipmentsCarrier = () => {
 
   useEffect(() => {
     fetchAvailableShipments();
+    console.log("hello")
   }, []);
 
   const fetchAvailableShipments = async () => {

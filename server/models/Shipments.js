@@ -103,6 +103,12 @@ const ShipmentsSchema = new mongoose.Schema(
       type: Boolean,
       default: false, 
     },
+    tracking: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Tracking'
+    },
+    mmsiNumber: String,
+    imoNumber: String,
     currency: {
       type: String,
       default: 'USD',

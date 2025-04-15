@@ -67,49 +67,26 @@ const ShipmentCarrierView = () => {
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [selectedBidToAccept, setSelectedBidToAccept] = useState(null);
 
-  // Add console log to check shipment data
-  console.log('Shipment Data:', shipmentData);
+  
 
   // Fetch user data from MongoDB when component mounts
   useEffect(() => {
     const fetchUserData = async () => {
       try {
         const response = await fetch(`${import.meta.env.VITE_API_URL}/shipments/user/${user.emailAddresses[0].emailAddress}`);
-        
-        if (response.ok) {
-          const data = await response.json();
-          // Set user data from the shipments response
-          const userInfo = {
-            email: user.emailAddresses[0].emailAddress,
-            role: user.publicMetadata?.role || 'carrier',
-            // Add any other user data you need
-          };
-          setUserData(userInfo);
-          console.log('Fetched user data:', userInfo);
-        } else {
-          console.error('Error fetching user data:', response.status);
-          // If user not found, set default user data
-          const defaultUserInfo = {
-            email: user.emailAddresses[0].emailAddress,
-            role: user.publicMetadata?.role || 'carrier'
-          };
-          setUserData(defaultUserInfo);
-        }
+        if (!response.ok) throw new Error('Failed to fetch user data');
+        const data = await response.json();
+        setUserData(data.user);
       } catch (error) {
         console.error('Error fetching user data:', error);
-        // Set default user data on error
-        const defaultUserInfo = {
-          email: user.emailAddresses[0].emailAddress,
-          role: user.publicMetadata?.role || 'carrier'
-        };
-        setUserData(defaultUserInfo);
+        setUserData({ role: 'carrier' }); // Set default role
       }
     };
 
-    if (user) {
+    if (user?.emailAddresses?.[0]?.emailAddress && !userData) {
       fetchUserData();
     }
-  }, [user]);
+  }, [user?.emailAddresses, userData]); // Only depend on email and userData
 
   useEffect(() => {
     fetchBids();
@@ -214,6 +191,7 @@ const ShipmentCarrierView = () => {
     try {
       const bidData = {
         email: user.emailAddresses[0].emailAddress,
+        userId: user.id, // Add the Clerk user ID
         amount: parseFloat(bidAmount),
         currency: bidCurrency,
         notes: bidNotes,
@@ -228,7 +206,8 @@ const ShipmentCarrierView = () => {
         },
         body: JSON.stringify(bidData)
       });
-
+      console.log(bidData)
+console.log(response);
       if (!response.ok) {
         throw new Error('Failed to place bid');
       }
@@ -572,31 +551,34 @@ const ShipmentCarrierView = () => {
             </Tabs.Panel>
             <Tabs.Panel value="Images">
               <Space h="xl" />
-              <Flex wrap="wrap" justify="center" gap="md">
-                {shipmentData.productImages && shipmentData.productImages.length > 0 ? (
-                  shipmentData.productImages.map((imageUrl, index) => (
-                    <Card key={index} shadow="sm" padding="xs" radius="md" withBorder>
-                      <Card.Section>
-                        <Image
-                          src={imageUrl}
-                          height={200}
-                          width={300}
-                          alt={`Product image ${index + 1}`}
-                          fit="cover"
-                          radius="md"
-                        />
-                      </Card.Section>
-                    </Card>
-                  ))
+              <SimpleGrid cols={3} spacing="md">
+                {shipmentData.products && shipmentData.products.some(product => product.productImages?.length > 0) ? (
+                  shipmentData.products.map((product, productIndex) => 
+                    product.productImages?.map((imageUrl, imageIndex) => (
+                      <Card key={`${productIndex}-${imageIndex}`} shadow="sm" padding="xs" radius="md" withBorder>
+                        <Card.Section>
+                          <Image
+                            src={imageUrl}
+                            height={200}
+                            alt={`${product.productName} image ${imageIndex + 1}`}
+                            fit="cover"
+                          />
+                        </Card.Section>
+                        <Text size="sm" color="dimmed" mt="xs">
+                          {product.productName} - Image {imageIndex + 1}
+                        </Text>
+                      </Card>
+                    ))
+                  ).flat()
                 ) : (
-                  <Paper p="xl" withBorder>
+                  <Paper p="xl" withBorder style={{ gridColumn: '1 / -1' }}>
                     <Flex direction="column" align="center" gap="md">
                       <IconPhoto size={48} color="gray" />
-                      <Text size="lg" color="dimmed">No images available for this shipment.</Text>
+                      <Text size="lg" color="dimmed">No images available for any products in this shipment.</Text>
                     </Flex>
                   </Paper>
                 )}
-              </Flex>
+              </SimpleGrid>
             </Tabs.Panel>
             <Tabs.Panel value="Bidding">
               <Space h="xl" />

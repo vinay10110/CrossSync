@@ -26,11 +26,21 @@ app.use(express.json());
 const shipmentsRouter = require('./routes/shipments');
 const carriersRouter = require('./routes/carriers');
 const chatRouter = require('./routes/chat');
+const usersRouter = require('./routes/users');
+const sellersRouter = require('./routes/seller');
+const googleVisionRouter = require('./routes/googlevision');
+const currencyRouter = require('./routes/currency');
+const trackingRouter = require('./routes/tracking');
 
 // Use routes
 app.use('/api/shipments', shipmentsRouter);
 app.use('/api/carriers', carriersRouter);
 app.use('/api/chat', chatRouter);
+app.use('/users', usersRouter);
+app.use('/sellers', sellersRouter);
+app.use('/google', googleVisionRouter);
+app.use('/currency', currencyRouter);
+app.use('/tracking', trackingRouter);
 
 // Socket.IO connection handling
 io.on('connection', (socket) => {
@@ -86,4 +96,4 @@ io.on('connection', (socket) => {
 const PORT = process.env.PORT || 4000;
 server.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
-}); 
+});

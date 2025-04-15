@@ -6,20 +6,39 @@ import {
   IconClock, IconTruck, IconPackage, IconFileCheck, IconPhoto, 
   IconInfoCircle, IconArrowLeft, IconListDetails, IconStar,
   IconUpload, IconTrash, IconDownload, IconFile, IconCurrencyDollar,
-  IconMessage
+  IconMessage, IconShip, IconEye
 } from '@tabler/icons-react';
 import { 
   Timeline, Text, Title, Container, Grid, Flex, Fieldset, 
   TextInput, Modal, Tabs, Button, Alert, Image, 
   Space, ScrollArea, Paper, Stack, Group, Badge, 
   Avatar, Tooltip, Table, Card, Progress, FileButton,
-  ActionIcon, SimpleGrid, Select, NumberInput, Divider
+  ActionIcon, SimpleGrid, Select, NumberInput, Divider, Box, FileInput
 } from '@mantine/core';
 import { rem } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { useUser } from "@clerk/clerk-react";
 import { notifications } from '@mantine/notifications';
 import Chat from '../../components/Chat';
+import Map from 'ol/Map';
+import View from 'ol/View';
+import TileLayer from 'ol/layer/Tile';
+import OSM from 'ol/source/OSM';
+import XYZ from 'ol/source/XYZ';
+import { fromLonLat } from 'ol/proj';
+import Feature from 'ol/Feature';
+import Point from 'ol/geom/Point';
+import LineString from 'ol/geom/LineString';
+import VectorSource from 'ol/source/Vector';
+import VectorLayer from 'ol/layer/Vector';
+import Style from 'ol/style/Style';
+import Stroke from 'ol/style/Stroke';
+import Fill from 'ol/style/Fill';
+import Circle from 'ol/style/Circle';
+import { default as OLText } from 'ol/style/Text';
+import Overlay from 'ol/Overlay';
+import 'ol/ol.css';
+import { supabase } from '../../components/Supabase';
 
 const DOCUMENT_TYPES = [
   { value: 'commercial_invoice', label: 'Commercial Invoice', icon: IconFile },
@@ -37,6 +56,14 @@ const CURRENCIES = [
   { value: 'INR', label: 'Indian Rupee (INR)' },
   { value: 'CNY', label: 'Chinese Yuan (CNY)' }
 ];
+
+const formatLocation = (location) => {
+  if (typeof location === 'object') {
+    const { name, city, country } = location;
+    return [name, city, country].filter(Boolean).join(', ');
+  }
+  return location || '';
+};
 
 const ShipmentSellerView = () => {
   const location = useLocation();
@@ -64,9 +91,105 @@ const ShipmentSellerView = () => {
   const [convertedBidAmounts, setConvertedBidAmounts] = useState({});
   const [isAcceptingBid, setIsAcceptingBid] = useState(false);
   const [chatOpened, { open: openChat, close: closeChat }] = useDisclosure(false);
-  const [showCancelModal, setShowCancelModal] = useState(false);
-  const [isCancelling, setIsCancelling] = useState(false);
-  
+  const [mapModalOpened, { open: openMapModal, close: closeMapModal }] = useDisclosure(false);
+  const [isLoadingTracking, setIsLoadingTracking] = useState(false);
+  const [trackingInfo, setTrackingInfo] = useState(null);
+  const [vesselCoordinates, setVesselCoordinates] = useState(null);
+  const [viewPdfUrl, setViewPdfUrl] = useState(null);
+  const [isPdfModalOpen, setIsPdfModalOpen] = useState(false);
+
+  const [walletConnected, setWalletConnected] = useState(false);
+  const [walletAddress, setWalletAddress] = useState('');
+  const [isProcessingPayment, setIsProcessingPayment] = useState(false);
+
+  const connectHathorWallet = async () => {
+    try {
+      // Check if Hathor Wallet is installed
+      if (typeof window.hathorLib === 'undefined') {
+        notifications.show({
+          title: 'Wallet Not Found',
+          message: 'Please install Hathor Wallet extension first',
+          color: 'red'
+        });
+        return;
+      }
+
+      // Request wallet connection
+      const address = await window.hathorLib.requestAccounts();
+      setWalletAddress(address[0]);
+      setWalletConnected(true);
+      
+      notifications.show({
+        title: 'Success',
+        message: 'Wallet connected successfully',
+        color: 'green'
+      });
+    } catch (error) {
+      console.error('Error connecting wallet:', error);
+      notifications.show({
+        title: 'Error',
+        message: 'Failed to connect wallet: ' + error.message,
+        color: 'red'
+      });
+    }
+  };
+
+  const handlePayment = async () => {
+    if (!walletConnected) {
+      notifications.show({
+        title: 'Error',
+        message: 'Please connect your Hathor wallet first',
+        color: 'red'
+      });
+      return;
+    }
+
+    try {
+      setIsProcessingPayment(true);
+      
+      // Create payment transaction
+      const tx = {
+        outputs: [{
+          address: acceptedBid.carrier.walletAddress, // Carrier's wallet address
+          value: acceptedBid.amount * 100, // Convert to cents
+          token: 'HTR' // Hathor's native token
+        }]
+      };
+
+      // Send transaction
+      const txId = await window.hathorLib.sendTransaction(tx);
+
+      notifications.show({
+        title: 'Success',
+        message: 'Payment completed successfully',
+        color: 'green'
+      });
+
+      // Update payment status in backend
+      await fetch(`${import.meta.env.VITE_API_URL}/shipments/${shipmentData._id}/payment`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          txId,
+          amount: acceptedBid.amount,
+          currency: acceptedBid.currency
+        })
+      });
+
+    } catch (error) {
+      console.error('Payment error:', error);
+      notifications.show({
+        title: 'Error',
+        message: 'Payment failed: ' + error.message,
+        color: 'red'
+      });
+    } finally {
+      setIsProcessingPayment(false);
+    }
+  };
+
   const fetchBids = async () => {
     try {
       const response = await fetch(`${import.meta.env.VITE_API_URL}/shipments/bids/${shipmentData._id}`);
@@ -95,6 +218,307 @@ const ShipmentSellerView = () => {
       });
     }
   };
+
+  const handleGetVesselInfo = async () => {
+    try {
+      setIsLoadingTracking(true);
+      const response = await fetch(`${import.meta.env.VITE_API_URL}/tracking/vessel/${shipmentData._id}`);
+      const data = await response.json();
+      
+      if (!response.ok) {
+        if (response.status === 404) {
+          notifications.show({
+            title: 'No Tracking Information',
+            message: 'This shipment hasn\'t started its journey yet.',
+            color: 'yellow'
+          });
+          return;
+        }
+        throw new Error(data.message || 'Failed to fetch tracking information');
+      }
+
+      // Get vessel info using IMO number from first RapidAPI
+      const vesselResponse = await fetch(
+        `https://vessel-information-api.p.rapidapi.com/1575/get%2Bcurrent%2Bposition?imoCode=${data.tracking.imoNumber}`, {
+          method: 'GET',
+          headers: {
+            'x-rapidapi-key': '344b6cfffamshb0dac064337b943p180c04jsn6702bb3313d0',
+            'x-rapidapi-host': 'vessel-information-api.p.rapidapi.com'
+          }
+      });
+
+      const vesselData = await vesselResponse.json();
+console.log(vesselData)
+      // Get position data using MMSI number from second RapidAPI
+      const positionResponse = await fetch(`https://vessels1.p.rapidapi.com/vessel/${data.tracking.mmsiNumber}`, {
+        method: 'GET',
+        headers: {
+          'x-rapidapi-key': 'ae8576435emsh4e91980d90a2549p1b2994jsn4a574609c054',
+          'x-rapidapi-host': 'vessels1.p.rapidapi.com'
+        }
+      });
+
+      const positionData = await positionResponse.json();
+      
+      setTrackingInfo({
+        ...data.tracking,
+        // Vessel info from first API (IMO)
+        position_received: vesselData.success ? vesselData.data.position_received : null,
+        area: vesselData.success ? vesselData.data.area : null,
+        current_port: vesselData.success ? vesselData.data.current_port : null,
+        navigational_status: vesselData.success ? vesselData.data.navigational_status : null,
+        speed_course: vesselData.success ? vesselData.data.speed_course : null,
+        ais_source: vesselData.success ? vesselData.data.ais_source : null,
+        // Position data from second API (MMSI)
+        mmsi: positionData.mmsi,
+        imo: data.tracking.imoNumber,
+        vessel_name: positionData.name,
+        callSign: positionData.callSign,
+        vessel_type: positionData.type,
+        draught: positionData.draught,
+        latitude: positionData.positions?.[0]?.latitude,
+        longitude: positionData.positions?.[0]?.longitude,
+        heading: positionData.positions?.[0]?.heading,
+        destination: positionData.destination,
+        eta: positionData.eta,
+        lastUpdate: positionData.positions?.[0]?.timestamp
+      });
+      
+      openMapModal();
+    } catch (error) {
+      console.error('Error fetching vessel info:', error);
+      notifications.show({
+        title: 'Error',
+        message: error.message,
+        color: 'red'
+      });
+    } finally {
+      setIsLoadingTracking(false);
+    }
+  };
+
+  useEffect(() => {
+    if (mapModalOpened && trackingInfo) {
+      // Create vessel marker feature
+      const vesselFeature = new Feature({
+        geometry: new Point(fromLonLat([
+          trackingInfo.longitude,
+          trackingInfo.latitude
+        ]))
+      });
+
+      // Create vessel marker style with label
+      const vesselStyle = new Style({
+        image: new Circle({
+          radius: 6,
+          fill: new Fill({ color: '#3498db' }),
+          stroke: new Stroke({ color: '#fff', width: 2 })
+        }),
+        text: new OLText({
+          text: `${trackingInfo.vessel_name}\n${trackingInfo.speed_course || ''}`,
+          offsetY: -15,
+          fill: new Fill({ color: '#000' }),
+          stroke: new Stroke({ color: '#fff', width: 3 })
+        })
+      });
+
+      vesselFeature.setStyle(vesselStyle);
+
+      // Create route feature with coordinates
+      const routeCoords = [
+        fromLonLat([shipmentData.origin.coordinates[0], shipmentData.origin.coordinates[1]]),
+        fromLonLat([trackingInfo.longitude, trackingInfo.latitude]),
+        fromLonLat([shipmentData.destination.coordinates[0], shipmentData.destination.coordinates[1]])
+      ];
+
+      const routeFeature = new Feature({
+        geometry: new LineString(routeCoords)
+      });
+
+      const routeStyle = new Style({
+        stroke: new Stroke({
+          color: '#2ecc71',
+          width: 2,
+          lineDash: [5, 5]
+        })
+      });
+
+      routeFeature.setStyle(routeStyle);
+
+      // Create vector source and layer for vessel and route
+      const vectorSource = new VectorSource({
+        features: [vesselFeature, routeFeature]
+      });
+
+      const vectorLayer = new VectorLayer({
+        source: vectorSource,
+        zIndex: 2
+      });
+
+      // Base OSM layer
+      const osmLayer = new TileLayer({
+        source: new OSM(),
+        zIndex: 0
+      });
+
+      // Weather layers
+      const weatherLayer = new TileLayer({
+        source: new XYZ({
+          url: 'https://tile.openweathermap.org/map/temp_new/{z}/{x}/{y}.png?appid=144c61f14efc9c0489394629cbdd96f4',
+          attributions: '© OpenWeatherMap'
+        }),
+        opacity: 0.5,
+        zIndex: 1
+      });
+
+      const windLayer = new TileLayer({
+        source: new XYZ({
+          url: 'https://tile.openweathermap.org/map/wind_new/{z}/{x}/{y}.png?appid=144c61f14efc9c0489394629cbdd96f4',
+          attributions: '© OpenWeatherMap'
+        }),
+        opacity: 0.5,
+        zIndex: 1
+      });
+
+      // Create weather info overlay
+      const weatherInfoElement = document.createElement('div');
+      weatherInfoElement.className = 'weather-info-overlay';
+      weatherInfoElement.style.backgroundColor = 'rgba(255, 255, 255, 0.8)';
+      weatherInfoElement.style.padding = '10px';
+      weatherInfoElement.style.borderRadius = '4px';
+
+      const weatherOverlay = new Overlay({
+        element: weatherInfoElement,
+        position: fromLonLat([trackingInfo.longitude, trackingInfo.latitude]),
+        positioning: 'top-left',
+        offset: [10, 10]
+      });
+
+      // Initialize map with all layers
+      const map = new Map({
+        target: 'map',
+        layers: [osmLayer, weatherLayer, windLayer, vectorLayer],
+        view: new View({
+          center: fromLonLat([trackingInfo.longitude, trackingInfo.latitude]),
+          zoom: 5
+        })
+      });
+
+      // Add weather overlay
+      map.addOverlay(weatherOverlay);
+
+      // Update weather info
+      const updateWeatherInfo = async () => {
+        try {
+          const response = await fetch(
+            `https://api.openweathermap.org/data/2.5/weather?lat=${trackingInfo.latitude}&lon=${trackingInfo.longitude}&units=metric&appid=144c61f14efc9c0489394629cbdd96f4`
+          );
+          const data = await response.json();
+          weatherInfoElement.innerHTML = `
+            <strong>Weather at Vessel Location</strong><br>
+            Temperature: ${data.main.temp}°C<br>
+            Conditions: ${data.weather[0].description}<br>
+            Wind: ${data.wind.speed} m/s, ${data.wind.deg}°
+          `;
+        } catch (error) {
+          console.error('Error fetching weather data:', error);
+        }
+      };
+
+      updateWeatherInfo();
+
+      // Fit view to show all features
+      const extent = vectorSource.getExtent();
+      map.getView().fit(extent, { padding: [50, 50, 50, 50] });
+
+      // Cleanup function
+      return () => {
+        if (map) {
+          map.setTarget(undefined);
+        }
+      };
+    }
+  }, [mapModalOpened, trackingInfo, shipmentData]);
+
+  useEffect(() => {
+    if (shipmentData?.origin?.coordinates && shipmentData?.destination?.coordinates) {
+      // Convert coordinates to OpenLayers format
+      const originCoords = fromLonLat([shipmentData.origin.coordinates[0], shipmentData.origin.coordinates[1]]);
+      const destCoords = fromLonLat([shipmentData.destination.coordinates[0], shipmentData.destination.coordinates[1]]);
+
+      // Create route feature
+      const routeFeature = new Feature({
+        geometry: new LineString([originCoords, destCoords])
+      });
+
+      const routeStyle = new Style({
+        stroke: new Stroke({
+          color: '#2ecc71',
+          width: 2,
+          lineDash: [5, 5]
+        })
+      });
+
+      routeFeature.setStyle(routeStyle);
+
+      // Create markers for origin and destination
+      const originFeature = new Feature({
+        geometry: new Point(originCoords)
+      });
+
+      const destFeature = new Feature({
+        geometry: new Point(destCoords)
+      });
+
+      const markerStyle = new Style({
+        image: new Circle({
+          radius: 6,
+          fill: new Fill({ color: '#3498db' }),
+          stroke: new Stroke({ color: '#fff', width: 2 })
+        }),
+        text: new OLText({
+          text: (feature) => feature === originFeature ? 'Origin' : 'Destination',
+          offsetY: -15,
+          fill: new Fill({ color: '#000' }),
+          stroke: new Stroke({ color: '#fff', width: 3 })
+        })
+      });
+
+      originFeature.setStyle(markerStyle);
+      destFeature.setStyle(markerStyle);
+
+      // Create vector layer for route and markers
+      const vectorLayer = new VectorLayer({
+        source: new VectorSource({
+          features: [routeFeature, originFeature, destFeature]
+        })
+      });
+
+      // Base map layer
+      const osmLayer = new TileLayer({
+        source: new OSM()
+      });
+
+      // Initialize map
+      const map = new Map({
+        target: 'map',
+        layers: [osmLayer, vectorLayer],
+        view: new View({
+          center: originCoords,
+          zoom: 5
+        })
+      });
+
+      // Fit view to show the entire route
+      const extent = vectorLayer.getSource().getExtent();
+      map.getView().fit(extent, { padding: [50, 50, 50, 50] });
+
+      // Cleanup function
+      return () => {
+        map.setTarget(undefined);
+      };
+    }
+  }, [shipmentData]);
 
   useEffect(() => {
     if (shipmentData?._id) {
@@ -192,44 +616,103 @@ const ShipmentSellerView = () => {
 
   const fetchDocuments = async () => {
     try {
-      const { data, error } = await supabase
-        .storage
-        .from('shipment-documents')
-        .list(`${shipmentData._id}`);
-
-      if (error) throw error;
-      setDocuments(data || []);
+      const response = await fetch(`${import.meta.env.VITE_API_URL}/shipments/${shipmentData._id}/documents`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch documents');
+      }
+      
+      const { documents } = await response.json();
+      const documentMap = {};
+      documents.forEach(doc => {
+        documentMap[doc.documentType] = doc.documentUrl;
+      });
+      setDocuments(documentMap);
     } catch (error) {
       console.error('Error fetching documents:', error);
-      
+      notifications.show({
+        title: 'Error',
+        message: 'Failed to fetch documents',
+        color: 'red'
+      });
     }
   };
 
-  const handleFileUpload = async (files) => {
-    if (!files || files.length === 0) return;
+  const handleFileUpload = async (file) => {
+    if (!file) return;
     setIsUploading(true);
 
     try {
-      const file = files[0];
-      if (!file.type.match(/^application\/(pdf|msword|vnd.openxmlformats-officedocument.wordprocessingml.document)$/)) {
-        throw new Error('Only PDF and Word documents are allowed');
-      }
-
+      // Validate file size
       if (file.size > 10 * 1024 * 1024) {
         throw new Error('File size should not exceed 10MB');
       }
 
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('type', uploadType);
+      // Create unique filename
+      const timestamp = Date.now();
+      const sanitizedName = file.name.replace(/[^a-zA-Z0-9._]/g, '_');
+      const uniqueFileName = `${timestamp}_${sanitizedName}`;
+      const filePath = `documents/${shipmentData._id}/${uniqueFileName}`;
 
+      // Upload file with explicit content type
+      const { data, error: uploadError } = await supabase.storage
+        .from('filesStore')
+        .upload(filePath, file, {
+          cacheControl: '3600',
+          contentType: file.type,
+          upsert: false,
+          onUploadProgress: (progress) => {
+            const percent = (progress.loaded / progress.total) * 100;
+            setUploadProgress(prev => ({ ...prev, [uniqueFileName]: percent }));
+          }
+        });
+
+      if (uploadError) {
+        console.error('Upload error:', uploadError);
+        if (uploadError.message?.includes('row-level security')) {
+          throw new Error('Storage permission denied. Please contact administrator to enable file uploads.');
+        }
+        throw new Error(uploadError.message || 'Failed to upload file');
+      }
+
+      // Get public URL
+      const { data: urlData, error: urlError } = await supabase.storage
+        .from('filesStore')
+        .getPublicUrl(filePath);
+
+      if (urlError) {
+        console.error('URL error:', urlError);
+        throw new Error(urlError.message || 'Failed to get public URL');
+      }
+
+      if (!urlData?.publicUrl) {
+        throw new Error('Failed to get public URL');
+      }
+
+      // Save document reference in MongoDB
       const response = await fetch(`${import.meta.env.VITE_API_URL}/shipments/${shipmentData._id}/documents`, {
         method: 'POST',
-        body: formData
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          documentUrl: urlData.publicUrl,
+          documentType: uploadType, // Use the uploadType state variable here
+          clerkId: user.user.id
+        }),
       });
 
+      const responseData = await response.json();
+
       if (!response.ok) {
-        throw new Error('Failed to upload document');
+        throw new Error(responseData.message || 'Failed to save document reference');
+      }
+
+      if (responseData.isShipmentVerified) {
+        notifications.show({
+          title: 'Success',
+          message: 'All required documents have been uploaded and verified',
+          color: 'green'
+        });
       }
 
       notifications.show({
@@ -238,7 +721,7 @@ const ShipmentSellerView = () => {
         color: 'green'
       });
 
-      await fetchDocuments();
+      fetchDocuments();
       closeUploadModal();
     } catch (error) {
       console.error('Error uploading file:', error);
@@ -253,28 +736,34 @@ const ShipmentSellerView = () => {
     }
   };
 
-  const handleFileDelete = async (fileName) => {
+  const handleFileDelete = async (documentType) => {
     try {
-      const response = await fetch(`${import.meta.env.VITE_API_URL}/shipments/${shipmentData._id}/documents/${fileName}`, {
-        method: 'DELETE'
+      const confirmed = window.confirm('Are you sure you want to delete this document?');
+      if (!confirmed) return;
+
+      const response = await fetch(`${import.meta.env.VITE_API_URL}/api/documents/delete/${shipmentData._id}/${documentType}`, {
+        method: 'DELETE',
       });
 
-      if (!response.ok) {
+      if (response.ok) {
+        notifications.show({
+          title: 'Success',
+          message: 'Document deleted successfully',
+          color: 'green'
+        });
+        // Update the documents state to remove the deleted document
+        setDocuments(prev => ({
+          ...prev,
+          [documentType]: null
+        }));
+      } else {
         throw new Error('Failed to delete document');
       }
-
-      notifications.show({
-        title: 'Success',
-        message: 'File deleted successfully',
-        color: 'green'
-      });
-
-      fetchDocuments();
     } catch (error) {
-      console.error('Error deleting file:', error);
+      console.error('Error deleting document:', error);
       notifications.show({
         title: 'Error',
-        message: 'Failed to delete file',
+        message: 'Failed to delete document',
         color: 'red'
       });
     }
@@ -284,8 +773,8 @@ const ShipmentSellerView = () => {
     try {
       const { data, error } = await supabase
         .storage
-        .from('shipment-documents')
-        .download(`${shipmentData._id}/${fileName}`);
+        .from('filesStore')
+        .download(`documents/${shipmentData._id}/${fileName}`);
 
       if (error) throw error;
 
@@ -366,55 +855,16 @@ const ShipmentSellerView = () => {
     return <Text color="red">No shipment data available.</Text>;
   }
 
-  const handlePDF = (url) => {
-    setUrl(url);
-    open(); 
+  const handlePDF = async (documentUrl) => {
+    setViewPdfUrl(documentUrl);
+    setIsPdfModalOpen(true);
   };
 
   const handleBack = () => {
     navigate(-1);
   };
 
-  const handleCancelShipment = async () => {
-    try {
-      setIsCancelling(true);
-      const response = await fetch(`${import.meta.env.VITE_API_URL}/shipments/deleteshipment/${shipmentData._id}`, {
-        method: 'DELETE'
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to cancel shipment');
-      }
-
-      notifications.show({
-        title: 'Success',
-        message: 'Shipment cancelled successfully',
-        color: 'green'
-      });
-
-      navigate('/dashboard/shipments');
-    } catch (error) {
-      console.error('Error cancelling shipment:', error);
-      notifications.show({
-        title: 'Error',
-        message: error.message || 'Failed to cancel shipment',
-        color: 'red'
-      });
-    } finally {
-      setIsCancelling(false);
-      setShowCancelModal(false);
-    }
-  };
-
   const renderShipmentDetails = () => {
-    const formatLocation = (location) => {
-      if (typeof location === 'object') {
-        const { name, city, country } = location;
-        return [name, city, country].filter(Boolean).join(', ');
-      }
-      return location || '';
-    };
-
     const formatDimensions = (dimensions) => {
       if (typeof dimensions === 'object') {
         const { length, width, height, unit } = dimensions;
@@ -556,16 +1006,7 @@ const ShipmentSellerView = () => {
 
     return (
       <Stack spacing="xl">
-        <Group position="apart">
-          <Title order={4}>Required Documents</Title>
-          <Button
-            leftIcon={<IconUpload size={16} />}
-            onClick={openUploadModal}
-            disabled={isUploading}
-          >
-            Upload Document
-          </Button>
-        </Group>
+        <Title order={4}>Required Documents</Title>
 
         <SimpleGrid cols={3} spacing="lg">
           {DOCUMENT_TYPES.map((docType) => {
@@ -574,36 +1015,37 @@ const ShipmentSellerView = () => {
             
             return (
               <Card key={docType.value} withBorder padding="lg">
-          <Stack spacing="md">
+                <Stack spacing="md">
                   <Group position="apart">
-            <Group>
+                    <Group>
                       <DocIcon size={24} />
                       <Text weight={500}>{docType.label}</Text>
-            </Group>
+                    </Group>
                     <Badge color={isUploaded ? 'green' : 'gray'}>
                       {isUploaded ? 'Uploaded' : 'Pending'}
                     </Badge>
-            </Group>
+                  </Group>
 
                   {isUploaded ? (
                     <Group spacing="xs">
                       <Button
                         variant="light"
                         size="sm"
-                        leftIcon={<IconDownload size={16} />}
-                        onClick={() => handleFileDownload(documents[docType.value])}
+                        leftIcon={<IconEye size={16} />}
+                        onClick={() => handlePDF(documents[docType.value])}
                         fullWidth
                       >
-                        Download
+                        View
                       </Button>
                       <ActionIcon
                         color="red"
                         variant="light"
                         onClick={() => handleFileDelete(docType.value)}
+                        title="Delete Document"
                       >
                         <IconTrash size={16} />
                       </ActionIcon>
-              </Group>
+                    </Group>
                   ) : (
                     <Button
                       variant="light"
@@ -775,17 +1217,10 @@ const ShipmentSellerView = () => {
         </Group>
         <Divider />
         <Group position="apart">
-          <Group spacing="sm">
-            <Avatar
-              src={carrierStats[acceptedBid.carrier?._id]?.clerkProfile?.imageUrl}
-              radius="xl"
-              size="lg"
-            />
-            <Stack spacing={2}>
-              <Text size="lg" weight={500}>{acceptedBid.carrier?.companyName}</Text>
-              <Text size="sm" color="dimmed">{acceptedBid.carrier?.email}</Text>
-            </Stack>
-          </Group>
+          <Stack spacing={2}>
+            <Text size="lg" weight={500}>{acceptedBid.carrier?.companyName}</Text>
+            <Text size="sm" color="dimmed">{acceptedBid.carrier?.email}</Text>
+          </Stack>
         </Group>
         <Card withBorder>
           <Stack spacing="xs">
@@ -818,6 +1253,15 @@ const ShipmentSellerView = () => {
             color="blue"
           >
             Chat with Carrier
+          </Button>
+          <Button
+            variant="filled"
+            leftIcon={<IconCurrencyDollar size={16} />}
+            onClick={handlePayment}
+            color="green"
+            loading={isProcessingPayment}
+          >
+            {isProcessingPayment ? 'Processing Payment...' : 'Make Payment'}
           </Button>
         </Group>
       </Stack>
@@ -1101,27 +1545,27 @@ const ShipmentSellerView = () => {
         </Button>
             <Title order={3}>Shipment Details</Title>
           </Group>
-        <Group>
-          {bids.length > 0 && !acceptedBid && (
+          <Group>
             <Button
-              variant="filled"
-              leftIcon={<IconListDetails size={16} />}
-              onClick={openBidsModal}
+              variant="light"
+              color="blue"
+              onClick={handleGetVesselInfo}
+              loading={isLoadingTracking}
+              leftIcon={<IconShip size={16} />}
             >
-              View All Bids ({bids.length})
+              Track Shipment
             </Button>
-          )}
-          <Button
-            color="red"
-            variant="outline"
-            leftIcon={<IconTrash size={16} />}
-            onClick={() => setShowCancelModal(true)}
-            disabled={shipmentData.isCompleted || shipmentData.dispatched}
-          >
-            Cancel Shipment
-          </Button>
+            {bids.length > 0 && !acceptedBid && (
+              <Button
+                variant="filled"
+                leftIcon={<IconListDetails size={16} />}
+                onClick={openBidsModal}
+              >
+                View All Bids ({bids.length})
+              </Button>
+            )}
+          </Group>
         </Group>
-      </Group>
       </Paper>
 
       <Grid>
@@ -1168,35 +1612,35 @@ const ShipmentSellerView = () => {
             </Tabs.Panel>
 
             <Tabs.Panel value="Images">
-  <SimpleGrid cols={3} spacing="md">
-    {shipmentData.products && shipmentData.products.some(product => product.productImages?.length > 0) ? (
-      shipmentData.products.map((product, productIndex) => 
-        product.productImages?.map((imageUrl, imageIndex) => (
-          <Card key={`${productIndex}-${imageIndex}`} shadow="sm" padding="xs" radius="md" withBorder>
-            <Card.Section>
-              <Image
-                src={imageUrl}
-                height={200}
-                alt={`${product.productName} image ${imageIndex + 1}`}
-                fit="cover"
-              />
-            </Card.Section>
-            <Text size="sm" color="dimmed" mt="xs">
-              {product.productName} - Image {imageIndex + 1}
-            </Text>
-          </Card>
-        ))
-      ).flat()
-    ) : (
-      <Paper p="xl" withBorder style={{ gridColumn: '1 / -1' }}>
-        <Flex direction="column" align="center" gap="md">
-          <IconPhoto size={48} color="gray" />
-          <Text size="lg" color="dimmed">No images available for any products in this shipment.</Text>
-        </Flex>
-      </Paper>
-    )}
-  </SimpleGrid>
-</Tabs.Panel>
+                <SimpleGrid cols={3} spacing="md">
+                {shipmentData.products?.some(product => product.productImages?.length > 0) ? (
+                  shipmentData.products.map((product, productIndex) => 
+                    product.productImages?.map((imageUrl, imageIndex) => (
+                      <Card key={`${productIndex}-${imageIndex}`} shadow="sm" padding="xs" radius="md" withBorder>
+                        <Card.Section>
+                          <Image
+                            src={imageUrl}
+                            height={200}
+                            alt={`${product.productName} - Image ${imageIndex + 1}`}
+                            fit="cover"
+                          />
+                        </Card.Section>
+                        <Text size="sm" color="dimmed" mt="xs">
+                          {product.productName} - Image {imageIndex + 1}
+                        </Text>
+                      </Card>
+                    ))
+                  ).flat()
+                ) : (
+                  <Paper p="xl" withBorder style={{ gridColumn: '1 / -1' }}>
+                    <Flex direction="column" align="center" gap="md">
+                      <IconPhoto size={48} color="gray" />
+                      <Text size="lg" color="dimmed">No images available for this shipment.</Text>
+                    </Flex>
+                  </Paper>
+                )}
+                </SimpleGrid>
+            </Tabs.Panel>
 
             <Tabs.Panel value="Documents">
                 {renderDocumentsTab()}
@@ -1236,8 +1680,6 @@ const ShipmentSellerView = () => {
                       leftIcon={<IconTruck size={16} />}
                       variant="outline"
                             fullWidth
-                            onClick={() => setShowCancelModal(true)}
-                            disabled={shipmentData.isCompleted || shipmentData.dispatched}
                           >
                       Cancel Shipment
                           </Button>
@@ -1299,70 +1741,162 @@ const ShipmentSellerView = () => {
         </Stack>
       </Modal>
 
-      {/* Chat Modal */}
+      {/* Map Modal */}
       <Modal
-        opened={chatOpened}
-        onClose={closeChat}
+        opened={mapModalOpened}
+        onClose={closeMapModal}
         size="xl"
-        padding={0}
-        radius="md"
-        withCloseButton={false}
-      >
-        {acceptedBid && user && (
-          <Chat
-            shipmentId={shipmentData._id}
-            currentUser={{
-              id: user.id,
-              full_name: user.fullName,
-              company_name: user.publicMetadata?.companyName,
-              image_url: user.imageUrl,
-              email: user.primaryEmailAddress?.emailAddress
-            }}
-            otherUser={{
-              id: acceptedBid.carrier._id,
-              full_name: acceptedBid.carrier.companyName,
-              company_name: acceptedBid.carrier.companyName,
-              image_url: carrierStats[acceptedBid.carrier._id]?.clerkProfile?.imageUrl,
-              email: acceptedBid.carrier.email
-            }}
-            onClose={closeChat}
-          />
-        )}
-      </Modal>
-
-      <Modal
-        opened={showCancelModal}
-        onClose={() => !isCancelling && setShowCancelModal(false)}
-        title={<Text size="lg" weight={600} color="red">Cancel Shipment</Text>}
+        title={<Text size="lg" weight={500}>Vessel Tracking</Text>}
       >
         <Stack spacing="md">
-          <Text>Are you sure you want to cancel this shipment? This action cannot be undone.</Text>
-          
-          <Alert 
-            color="red" 
-            variant="light"
-            title="Warning"
-          >
-            Cancelling a shipment may have financial implications and affect your seller rating.
-          </Alert>
+          {trackingInfo ? (
+            <>
+              <Paper p="md" withBorder>
+                <Group position="apart">
+                  <Group>
+                    <Text weight={500}>Vessel Number:</Text>
+                    <Text>{trackingInfo.vesselNumber}</Text>
+                  </Group>
+                  <Group>
+                    <Text weight={500}>Status:</Text>
+                    <Badge color="blue">{trackingInfo.status}</Badge>
+                  </Group>
+                </Group>
+              </Paper>
 
-          <Group position="apart" mt="xl">
-            <Button 
-              variant="subtle" 
-              onClick={() => setShowCancelModal(false)}
-              disabled={isCancelling}
-            >
-              Keep Shipment
-            </Button>
-            <Button 
-              color="red" 
-              onClick={handleCancelShipment}
-              loading={isCancelling}
-            >
-              {isCancelling ? 'Cancelling...' : 'Yes, Cancel Shipment'}
-            </Button>
-          </Group>
+              <Paper p="md" withBorder>
+                <Stack spacing="sm">
+                  <Text weight={500}>Vessel Information:</Text>
+                  <SimpleGrid cols={2} spacing="md">
+                    <Group>
+                      <Text size="sm" weight={500}>Last Position Update:</Text>
+                      <Text size="sm">{trackingInfo.position_received || 'N/A'}</Text>
+                    </Group>
+                    <Group>
+                      <Text size="sm" weight={500}>Current Area:</Text>
+                      <Text size="sm">{trackingInfo.area || 'N/A'}</Text>
+                    </Group>
+                    <Group>
+                      <Text size="sm" weight={500}>Current Port:</Text>
+                      <Text size="sm">{trackingInfo.current_port || 'N/A'}</Text>
+                    </Group>
+                    <Group>
+                      <Text size="sm" weight={500}>Navigation Status:</Text>
+                      <Text size="sm">{trackingInfo.navigational_status || 'N/A'}</Text>
+                    </Group>
+                    <Group>
+                      <Text size="sm" weight={500}>Speed & Course:</Text>
+                      <Text size="sm">{trackingInfo.speed_course || 'N/A'}</Text>
+                    </Group>
+                    <Group>
+                      <Text size="sm" weight={500}>AIS Source:</Text>
+                      <Text size="sm">{trackingInfo.ais_source || 'N/A'}</Text>
+                    </Group>
+                  </SimpleGrid>
+                </Stack>
+              </Paper>
+
+              <Paper p="md" withBorder>
+                <Stack spacing="sm">
+                  <Text weight={500}>Vessel Position Details:</Text>
+                  <SimpleGrid cols={2} spacing="md">
+                    <Group>
+                      <Text size="sm" weight={500}>MMSI:</Text>
+                      <Text size="sm">{trackingInfo.mmsi || 'N/A'}</Text>
+                    </Group>
+                    <Group>
+                      <Text size="sm" weight={500}>Call Sign:</Text>
+                      <Text size="sm">{trackingInfo.callSign || 'N/A'}</Text>
+                    </Group>
+                    <Group>
+                      <Text size="sm" weight={500}>Vessel Name:</Text>
+                      <Text size="sm">{trackingInfo.vessel_name || 'N/A'}</Text>
+                    </Group>
+                    <Group>
+                      <Text size="sm" weight={500}>Vessel Type:</Text>
+                      <Text size="sm">{trackingInfo.vessel_type || 'N/A'}</Text>
+                    </Group>
+                    <Group>
+                      <Text size="sm" weight={500}>Draught:</Text>
+                      <Text size="sm">{trackingInfo.draught || 'N/A'} m</Text>
+                    </Group>
+                    <Group>
+                      <Text size="sm" weight={500}>Last Update:</Text>
+                      <Text size="sm">{trackingInfo.lastUpdate ? new Date(trackingInfo.lastUpdate).toLocaleString() : 'N/A'}</Text>
+                    </Group>
+                    <Group>
+                      <Text size="sm" weight={500}>Current Position:</Text>
+                      <Text size="sm">
+                        {trackingInfo.latitude && trackingInfo.longitude 
+                          ? `${trackingInfo.latitude}°, ${trackingInfo.longitude}°` 
+                          : 'N/A'}
+                      </Text>
+                    </Group>
+                    <Group>
+                      <Text size="sm" weight={500}>Heading:</Text>
+                      <Text size="sm">{trackingInfo.heading !== undefined ? `${trackingInfo.heading}°` : 'N/A'}</Text>
+                    </Group>
+                    <Group>
+                      <Text size="sm" weight={500}>Destination:</Text>
+                      <Text size="sm">{trackingInfo.destination || 'N/A'}</Text>
+                    </Group>
+                    <Group>
+                      <Text size="sm" weight={500}>ETA:</Text>
+                      <Text size="sm">{trackingInfo.eta || 'N/A'}</Text>
+                    </Group>
+                  </SimpleGrid>
+                </Stack>
+              </Paper>
+
+              <Paper p="md" withBorder>
+                <Stack spacing="sm">
+                  <Text weight={500}>Route Information:</Text>
+                  <Group position="apart">
+                    <Group>
+                      <IconTruck size={16} />
+                      <Text>Origin: {formatLocation(shipmentData?.origin)}</Text>
+                    </Group>
+                    <Group>
+                      <IconTruck size={16} />
+                      <Text>Destination: {formatLocation(shipmentData?.destination)}</Text>
+                    </Group>
+                  </Group>
+                </Stack>
+              </Paper>
+
+              <div id="map" style={{ width: '100%', height: '400px', marginTop: '1rem' }} />
+
+              <Alert color="blue" title="Tracking Status" variant="light">
+                <Stack spacing="xs">
+                  <Text>Current vessel location being tracked.</Text>
+                  <Text size="sm" color="dimmed">
+                    Real-time updates will be available as the vessel transmits new position data.
+                  </Text>
+                </Stack>
+              </Alert>
+            </>
+          ) : (
+            <Alert color="yellow" title="Loading Tracking Information">
+              <Text>Retrieving vessel tracking information...</Text>
+            </Alert>
+          )}
         </Stack>
+      </Modal>
+
+      {/* PDF Viewer Modal */}
+      <Modal
+        opened={isPdfModalOpen}
+        onClose={() => setIsPdfModalOpen(false)}
+        size="xl"
+        title="Document Viewer"
+      >
+        {viewPdfUrl && (
+          <iframe
+            src={viewPdfUrl}
+            style={{ width: '100%', height: '80vh' }}
+            frameBorder="0"
+          />
+        )}
       </Modal>
     </Container>
   );
