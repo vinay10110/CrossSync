@@ -1,4 +1,4 @@
-# CrossSync: End‑to‑End Freight Collaboration
+# CrossSync
  
 A modern, end‑to‑end freight collaboration platform that connects exporters (sellers) and carriers to plan, book, track, and complete international shipments with confidence.
  
@@ -141,21 +141,3 @@ This project showcases a practical, user‑centric workflow for cross‑border s
 - Risk‑aware tracking: Visualize routes with weather overlays to anticipate delays and plan alternatives.
 - Cross‑currency decisions: Compare and normalize bids to your preferred currency.
 
-## Personas
-- Seller/Exporter: Operations or compliance lead at an SMB who needs reliable bookings and fewer document errors.
-- Carrier/Forwarder: Sales or capacity manager who wants to discover quality shipments and maintain utilization.
-- Business owner: Wants visibility and trustworthy status updates without chasing multiple parties.
-
-## Success Metrics
-- Time to book: Minutes from shipment creation to accepted bid.
-- Collaboration efficiency: Reduction in email/message back‑and‑forth per shipment.
-- Document quality: Fewer document corrections or rejections prior to dispatch.
-- On‑time performance: Higher share of shipments arriving within the planned window.
-- Adoption: Number of repeat sellers and carriers using the platform monthly.
-
-## Known Limitations
-- Demo keys and sandbox services are used by default; set up your own credentials for production use.
-- Public file access may be enabled in sample storage; switch to private buckets and signed URLs before going live.
-- Vessel and weather layers are for situational awareness, not certified navigation.
-- Mapping examples emphasize sea routes; support for other modes can be added as needed.
-- Payments via Hathor are demo‑level; integrate a production‑grade flow for live operations.
