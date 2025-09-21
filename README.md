@@ -1,150 +1,161 @@
-# CrossSync - Maritime Logistics Platform
+# CrossSync: End‑to‑End Freight Collaboration
+ 
+A modern, end‑to‑end freight collaboration platform that connects exporters (sellers) and carriers to plan, book, track, and complete international shipments with confidence.
+ 
+## Problem Statement
+- Fragmented handoffs between sellers and carriers create delays, hidden costs, and errors.
+- Paperwork and compliance (invoices, origin certificates, packing lists) are time‑consuming and error‑prone.
+- Live shipment visibility is limited, making exceptions hard to manage.
+- Currency differences and cross‑border complexity slow decisions and increase risk.
+ 
+## Solution Overview
+- Intelligent shipment requests: Sellers specify products, dimensions/weight, origin and destination ports in minutes.
+- Carrier marketplace & bidding: Carriers browse live opportunities and submit competitive bids; sellers choose the best fit.
+- Real‑time collaboration: Built‑in chat for each shipment keeps context, decisions, and files together.
+- Document automation: Upload trade documents and auto‑validate with Vision AI to reduce compliance mistakes.
+- Route planning you can see: Explore ocean routes on an interactive map before confirming.
+- In‑transit visibility: Optional vessel tracking overlay with weather layers to anticipate risks earlier.
+- Smarter decisions with currency conversion: Compare bids in your preferred currency instantly.
+- Trusted updates: Email alerts and live status changes keep both sides aligned.
+- Secure access & roles: Authentication and role‑based views for sellers and carriers.
+ 
+## Target Users
+- Exporters/SMBs wanting faster, error‑free shipments and better carrier coverage.
+- Freight carriers and forwarders looking to keep capacity filled and win high‑quality loads.
+- Operations teams seeking a single source of truth across messages, bids, documents, and tracking.
+ 
+## Workflow Overview
+1. Seller creates a shipment with product details and ports; the platform suggests/plans feasible routes.
+2. Carriers discover the shipment and place bids (with currency conversion support).
+3. Seller accepts a bid; both parties get a dedicated chat and document space.
+4. Trade documents are uploaded and validated; shipment moves through verification → dispatch → in‑transit → completed.
+5. Optional vessel location and weather overlays provide context for ETAs and exception handling.
+6. Notifications and real‑time updates keep everyone synchronized.
+ 
+## Business Benefits
+- Faster bookings and fewer emails back‑and‑forth.
+- Lower cost through transparent, competitive bids.
+- Fewer document errors and compliance issues.
+- Earlier risk detection with mapping, tracking, and weather context.
+- A complete, auditable trail of messages, files, and status changes per shipment.
+ 
+---
+ 
+## Quick Start
+Keep it simple—run the server and the client.
+ 
+Prerequisites
+- Node.js 18+ and npm
+- A MongoDB connection string (local Atlas or self‑hosted)
+ 
+1) Configure environment
+- Server `server/.env` (minimal example):
+```
+MONGO_URL=mongodb+srv://<user>:<pass>@<cluster>/<db>?retryWrites=true&w=majority
+HOST_ADDRESS=http://localhost:5173
+BREVO_API_KEY=<brevo_smtp_key>
+EMAIL_TEMPLATE=<from_email@example.com>
+GOOGLE_API_KEY=<google_cloud_vision_api_key>
+# Optional, if you enable these features
+SUPABASE_URL=<supabase_url>
+SUPABASE_ANON_KEY=<supabase_anon_key>
+EXCHANGE_RATE_API_KEY=<exchange_rate_api_key>
+AWS_REGION=<region>
+AWS_ACCESS_KEY_ID=<aws_key_id>
+AWS_SECRET_ACCESS_KEY=<aws_secret>
+AWS_S3_BUCKET=<bucket_name>
+```
 
-CrossSync is a comprehensive maritime logistics platform that connects sellers and carriers for efficient shipment management across international waters. The platform facilitates real-time tracking, secure communication, and seamless coordination between parties involved in maritime shipping operations.
+- Client `client/.env` (minimal example):
+```
+VITE_API_URL=http://localhost:4000
+VITE_CLERK_PUBLISHABLE_KEY=<clerk_publishable_key>
+VITE_SUPABASE_URL=<supabase_url>
+VITE_SUPABASE_KEY=<supabase_anon_key>
+VITE_SEAROUTES_API_KEY=<searoutes_api_key>
+```
 
-## Features
+Notes
+- Some optional features (e.g., vessel tracking overlays) require additional API keys. Configure them if you plan to use those features.
+- Never commit secrets to version control.
 
-- **User Role Management**
-  - Separate interfaces for sellers and carriers
-  - Secure authentication using Clerk
-  - Role-based access control
+2) Install dependencies
+- In `server/`: `npm install`
+- In `client/`: `npm install`
 
-- **Shipment Management**
-  - Create and manage shipment requests
-  - Real-time shipment tracking
-  - Route optimization using SeaRoutes API
-  - Document verification using Google Vision API
-  - Weather information integration
+3) Run locally (two terminals)
+- In `server/`: `npm start` (runs on port 4000)
+- In `client/`: `npm run dev` (opens on http://localhost:5173)
 
-- **Communication**
-  - Real-time chat system using Socket.IO
-  - Document sharing
-  - Notifications for important updates
+4) Try it
+- Sign up/sign in, choose your role (seller or carrier), and:
+  - Sellers: create a shipment, upload documents, and review carrier bids.
+  - Carriers: browse shipments, place bids, and collaborate in real‑time.
 
-- **Payment Integration**
-  - Secure payment processing using Hathor Network
-  - Transaction history tracking
-  - Multi-currency support
+---
 
-- **Interactive Maps**
-  - Port selection with worldwide coverage
-  - Route visualization using OpenLayers
-  - Real-time weather overlay
+## Product Status
+This project showcases a practical, user‑centric workflow for cross‑border shipping. Real‑time chat, document automation, mapping, and notifications are designed to reduce friction, improve trust, and accelerate every shipment from request to delivery.
 
-## Technology Stack
+## Integrations
+- Authentication & accounts: Clerk for secure sign‑in and role‑based access
+- Chat & collaboration: Supabase Realtime; optional TalkJS for rich 1:1 chats
+- Document automation: Google Vision API (text/document detection) to validate trade docs
+- Mapping & routing: OpenLayers/Leaflet with Searoutes API for sea route planning
+- Weather overlays: OpenWeatherMap tiles for temperature and wind context
+- Storage: Supabase Storage for shipment files; AWS S3 for carrier documents
+- Notifications: Brevo (Sendinblue) for email updates
+- Payments (optional): Hathor wallet integration for confirmations and payouts
 
-### Frontend
-- React 18 with Vite
-- Mantine UI Components
-- React Router for navigation
-- Socket.IO for real-time communication
-- OpenLayers for map visualization
-- Clerk for authentication
-- Supabase for data storage
+## Security & Privacy
+- Secrets live in environment variables; never commit keys to version control.
+- In production, prefer private buckets and signed URLs for file access.
+- Review bucket/object ACLs; sample code uses public access for simplicity—tighten this before going live.
+- Limit CORS origins to your client app domain.
+- Store only necessary personal data and minimize logging of sensitive information.
 
-### Backend
-- Node.js with Express
-- MongoDB for database
-- Socket.IO for WebSocket connections
-- Google Vision API for document verification
-- SeaRoutes API for maritime routing
-- Brevo for email notifications
+## Roadmap
+- Role‑based analytics and shipment performance insights
+- Deeper document parsing and automated compliance checks
+- Proactive alerts (ETA risk, severe weather, port congestion)
+- E‑signing for commercial documents and standardized templates
+- Multi‑currency invoicing, settlements, and payouts
+- Webhooks and connectors to ERP/TMS systems
 
-## Getting Started
+## FAQ
+- Who is it for? Exporters/SMBs and freight carriers/forwarders collaborating on international shipments.
+- Do I need API keys to run it? Yes. Core setup needs a database URL and client/server URLs; optional features (routing, weather, S3, email, Vision) require their respective keys.
+- Does it support air/road? The collaboration flow is mode‑agnostic; the included mapping demo focuses on sea.
+- How are documents stored? Shipment files can use Supabase Storage; carrier docs can use AWS S3. Use private buckets and signed URLs in production.
+- Is there a mobile app? The web app is responsive; native apps can be added later.
+- Can I export my data? Exports can be added from the backend—open an issue to prioritize it.
 
-### Prerequisites
-- Node.js 16 or higher
-- MongoDB
-- Supabase account
-- Clerk account
+## Feedback & Support
+- Open an issue or start a discussion in this repository.
+- For product questions or collaborations, contact the maintainers (add your email or link).
 
-### Installation
+## Use Cases
+- Quote to booking in minutes: Create a shipment, collect bids, and confirm the best offer in a single session.
+- Document‑ready shipments: Upload core trade docs (invoice, packing list, origin certificate) and reduce back‑and‑forth.
+- Transparent collaboration: Keep all messages and files tied to each shipment for easy auditing.
+- Risk‑aware tracking: Visualize routes with weather overlays to anticipate delays and plan alternatives.
+- Cross‑currency decisions: Compare and normalize bids to your preferred currency.
 
-1. Clone the repository
-\`\`\`bash
-git clone https://github/vinay10110/CrossSync
-\`\`\`
+## Personas
+- Seller/Exporter: Operations or compliance lead at an SMB who needs reliable bookings and fewer document errors.
+- Carrier/Forwarder: Sales or capacity manager who wants to discover quality shipments and maintain utilization.
+- Business owner: Wants visibility and trustworthy status updates without chasing multiple parties.
 
-2. Install dependencies for both frontend and backend
-\`\`\`bash
-# Frontend
-cd client
-npm install
+## Success Metrics
+- Time to book: Minutes from shipment creation to accepted bid.
+- Collaboration efficiency: Reduction in email/message back‑and‑forth per shipment.
+- Document quality: Fewer document corrections or rejections prior to dispatch.
+- On‑time performance: Higher share of shipments arriving within the planned window.
+- Adoption: Number of repeat sellers and carriers using the platform monthly.
 
-# Backend
-cd ../server
-npm install
-\`\`\`
-
-### Configuration
-
-#### Frontend Environment Variables (.env)
-\`\`\`
-VITE_API_URL='YOUR_BACKEND_URL'
-VITE_SUPABASE_URL='SUPABASE_URL'
-VITE_SUPABASE_KEY='SUPABASE_KEY'
-VITE_CLERK_PUBLISHABLE_KEY='YOUR_CLERK_KEY'
-VITE_SEAROUTES_API_KEY='YOUR_SEAROUTES_KEY'
-\`\`\`
-
-#### Backend Environment Variables (.env)
-\`\`\`
-MONGO_URL='MONGODB_URL'
-HOST_ADDRESS='YOUR_FRONTEND_URL'
-BREVO_API_KEY='YOUR_BREVO_API_KEY'
-GOOGLE_API_KEY='YOUR_GOOGLE_API_KEY'
-EMAIL_TEMPLATE='YOUR_EMAIL'
-SUPABASE_URL='YOUR_SUPABASE_URL'
-SUPABASE_ANON_KEY='YOUR_SUPABASE_KEY'
-\`\`\`
-
-### Running the Application
-
-1. Start the frontend development server
-\`\`\`bash
-cd client
-npm run dev
-\`\`\`
-
-2. Start the backend server
-\`\`\`bash
-cd server
-npm test
-\`\`\`
-
-The application will be available at `http://localhost:3000`
-
-## Key Features in Detail
-
-### For Sellers
-- Create shipment requests with detailed cargo information
-- Browse and select carriers
-- Track shipment status in real-time
-- Communicate with carriers
-- Manage payments and documentation
-
-### For Carriers
-- Browse available shipment requests
-- Submit bids for shipments
-- Update shipment status and location
-- Manage fleet and documentation
-- Receive real-time notifications
-
-## Support
-
-For support and queries, please create an issue in the repository or contact the development team.
-
-## License
-
-This project is licensed under the Apache License 2.0 - see the LICENSE file for details.
-
-## Acknowledgments
-
-- [Mantine UI](https://mantine.dev) - For the comprehensive UI component library
-- [Google Vision API](https://cloud.google.com/vision/docs) - For document verification
-- [Brevo](https://developers.brevo.com/) - For email services
-- [Supabase](https://supabase.com/docs) - For database and real-time features
-- [SeaRoutes API](https://www.searoutes.com/) - For maritime routing
-- [OpenLayers](https://openlayers.org/) - For map visualization
-- [Clerk](https://clerk.com/) - For authentication and user management
-
+## Known Limitations
+- Demo keys and sandbox services are used by default; set up your own credentials for production use.
+- Public file access may be enabled in sample storage; switch to private buckets and signed URLs before going live.
+- Vessel and weather layers are for situational awareness, not certified navigation.
+- Mapping examples emphasize sea routes; support for other modes can be added as needed.
+- Payments via Hathor are demo‑level; integrate a production‑grade flow for live operations.
