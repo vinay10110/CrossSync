@@ -41,23 +41,31 @@ const AllShipmentsCarrier = () => {
           shadow="sm"
           padding="lg"
           radius="md"
-          withBorder
           key={index}
           onClick={() => handleCardClick(item)} 
           style={{ cursor: 'pointer' }}
         >
           <Card.Section>
-            <Image
-              src={item.productImages?.[0] || 'https://placehold.co/600x400?text=No+Image'}
-              height={160}
-              alt={item.productName}
-              fallbackSrc="https://placehold.co/600x400?text=No+Image"
-            />
+            {item.products?.[0]?.productImages?.[0] && (
+              <Image
+                src={item.products[0].productImages[0]}
+                height={160}
+                alt="Product"
+                fallbackSrc="https://placehold.co/600x400?text=No+Image"
+              />
+            )}
+            {!item.products?.[0]?.productImages?.[0] && (
+              <Image
+                src="https://placehold.co/600x400?text=No+Image"
+                height={160}
+                alt="No Image"
+              />
+            )}
           </Card.Section>
 
           <Group justify="space-between" mt="md" mb="xs">
-            <Text fw={500}>{item.productName}</Text>
-            <Badge color="blue">{item.category}</Badge>
+            <Text fw={500}>{item.products?.[0]?.productName || 'Untitled Product'}</Text>
+            <Badge color="blue">{item.products?.[0]?.category || 'General'}</Badge>
           </Group>
 
           <Text size="sm" color="dimmed" mb="md">
@@ -71,10 +79,10 @@ const AllShipmentsCarrier = () => {
 
           <Group justify="space-between" mt="xs">
             <Text size="sm" c="dimmed">
-              Weight: {item.weight} kg
+              Weight: {item.products?.[0]?.weight || 0} kg
             </Text>
             <Text size="sm" c="dimmed">
-              Quantity: {item.quantity}
+              Quantity: {item.products?.[0]?.quantity || 0}
             </Text>
           </Group>
 

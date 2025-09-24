@@ -2,9 +2,9 @@ const express = require('express');
 const Shipments = require('../models/Shipments');
 const User = require('../models/User');
 const Document = require('../models/Documents');
+const Conversation = require('../models/Conversation');
 const router = express.Router();
 const { sendEmail } = require('../Email/EmailTemplate');
-const searoutesDocs=require('@api/searoutes-docs');
 const formatLocation = (location) => {
   if (typeof location === 'object') {
     return `${location.city}, ${location.country} (${location.name})`;
@@ -110,7 +110,8 @@ router.get('/user/:email', async (req, res) => {
   try {
     const user = await User.findOne({ email: req.params.email });
     if (!user) {
-      return res.status(404).json({ error: 'User not found' });
+      // Return empty shipments array instead of 404 error when user doesn't exist
+      return res.json({ shipments: [] });
     }
 
     const shipments = await Shipments.find({ user: user._id })
@@ -252,7 +253,11 @@ router.get('/seller/profile/:email', async (req, res) => {
     // Find the user and populate necessary fields
     const user = await User.findOne({ email: req.params.email });
     if (!user) {
-      return res.status(404).json({ error: 'User not found' });
+      // Return empty data instead of 404 error when user doesn't exist
+      return res.json({ 
+        user: null,
+        shipments: [] 
+      });
     }
 
     // Find all shipments for this user with populated fields
@@ -308,15 +313,38 @@ router.get('/available', async (req, res) => {
       isTaken: false 
     })
     .populate('user', 'email companyName')
-    .lean() // Convert to plain JavaScript object
-    .select('productName productType category subCategory origin destination weight quantity productImages price estimatedDeliveryDate dimensions handlingInstructions totalWeight currency user createdAt status');
+    .lean(); // Convert to plain JavaScript object
+
+    // Format the response data to match the structure expected by frontend
+    const formattedShipments = availableShipments.map(shipment => ({
+      _id: shipment._id,
+      origin: shipment.origin || '',
+      destination: shipment.destination || '',
+      products: (shipment.products || []).map(product => ({
+        ...product,
+        dimensions: typeof product.dimensions === 'string' 
+          ? { 
+              length: parseInt(product.dimensions.split('x')[0]) || 0,
+              width: parseInt(product.dimensions.split('x')[1]) || 0,
+              height: parseInt(product.dimensions.split('x')[2].split(' ')[0]) || 0,
+              unit: product.dimensions.split(' ')[1] || 'cm'
+            }
+          : product.dimensions || { length: 0, width: 0, height: 0, unit: 'cm' }
+      })),
+      estimatedDeliveryDate: shipment.estimatedDeliveryDate,
+      createdAt: shipment.createdAt,
+      totalWeight: shipment.totalWeight || 0,
+      user: shipment.user,
+      transportModes: shipment.transportModes || ['sea'],
+      shippingStatus: shipment.shippingStatus || 'pending'
+    }));
 
     // Log the first shipment for debugging
-    if (availableShipments.length > 0) {
-      console.log('Sample shipment data:', JSON.stringify(availableShipments[0], null, 2));
+    if (formattedShipments.length > 0) {
+      console.log('Sample formatted shipment data:', JSON.stringify(formattedShipments[0], null, 2));
     }
 
-    return res.json({ shipments: availableShipments });
+    return res.json({ shipments: formattedShipments });
   } catch (error) {
     console.error('Error fetching available shipments:', error);
     return res.status(500).json({ error: 'Failed to fetch available shipments' });
@@ -440,6 +468,28 @@ router.post('/bid/:shipmentId/accept/:bidId', async (req, res) => {
     });
 
     await shipment.save();
+
+    // Create conversation between seller and carrier
+    try {
+      const existingConversation = await Conversation.findOne({
+        participants: { $all: [shipment.user, bid.carrier] },
+        shipmentId: shipmentId
+      });
+
+      if (!existingConversation) {
+        const conversation = new Conversation({
+          participants: [shipment.user, bid.carrier],
+          shipmentId: shipmentId,
+          lastMessage: 'Conversation started - bid accepted',
+          lastMessageAt: new Date()
+        });
+        await conversation.save();
+        console.log('Conversation created between seller and carrier');
+      }
+    } catch (conversationError) {
+      console.error('Error creating conversation:', conversationError);
+      // Don't fail the bid acceptance if conversation creation fails
+    }
 
     // Notify the carrier
     const carrier = await User.findById(bid.carrier);
