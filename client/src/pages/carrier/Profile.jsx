@@ -24,6 +24,8 @@ import {
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { IconEdit, IconTrash, IconPlus, IconUpload } from '@tabler/icons-react';
+import { useUser } from '@clerk/clerk-react';
+import { getCarrierProfile, updateCarrierProfile } from '../../utils/api';
 
 
 // Predefined options for dropdowns
@@ -53,6 +55,7 @@ const certificationTypes = [
 ];
 
 const Profile = () => {
+  const { user } = useUser();
 
   const [activeTab, setActiveTab] = useState('business');
   const [isEditing, setIsEditing] = useState(false);
@@ -108,17 +111,52 @@ const Profile = () => {
   });
 
   useEffect(() => {
-    fetchBusinessProfile();
-    fetchSavedVehicles();
-  }, []);
+    if (user) {
+      fetchBusinessProfile();
+      fetchSavedVehicles();
+    }
+  }, [user]);
 
   const fetchBusinessProfile = async () => {
+    if (!user) return;
+
     try {
-      const response = await fetch(`${import.meta.env.VITE_API_URL}/carrier/profile/${user.email}`);
-      if (response.ok) {
-        const data = await response.json();
-        setBusinessProfile(data.profile);
-      }
+      const profile = await getCarrierProfile(user.id);
+      
+      // Transform flat structure to nested structure for the form
+      setBusinessProfile({
+        companyName: profile.companyName || '',
+        businessType: profile.businessType || '',
+        registrationNumber: profile.registrationNumber || '',
+        taxId: profile.taxId || '',
+        description: profile.description || '',
+        address: {
+          street: profile.address || '',
+          city: profile.city || '',
+          state: profile.state || '',
+          country: profile.country || '',
+          zipCode: profile.postalCode || '',
+        },
+        contact: {
+          email: profile.email || '',
+          phone: profile.phone || '',
+          website: profile.website || '',
+        },
+        transportModes: profile.vehicleTypes || [],
+        serviceAreas: profile.specializations || [],
+        certifications: profile.certifications || [],
+        insuranceInfo: {
+          provider: profile.insuranceProvider || '',
+          policyNumber: profile.insuranceNumber || '',
+          coverage: profile.insuranceCoverage || '',
+          expiryDate: profile.insuranceExpiry || '',
+        },
+        operatingHours: {
+          weekdays: profile.operatingHoursWeekdays || '',
+          weekends: profile.operatingHoursWeekends || '',
+          holidays: profile.operatingHoursHolidays || '',
+        },
+      });
     } catch (error) {
       console.error('Error fetching business profile:', error);
     }
@@ -137,26 +175,53 @@ const Profile = () => {
   };
 
   const handleBusinessProfileUpdate = async () => {
+    if (!user) {
+      notifications.show({
+        title: 'Error',
+        message: 'User not authenticated',
+        color: 'red',
+      });
+      return;
+    }
+
     try {
-      const response = await fetch(`${import.meta.env.VITE_API_URL}/carrier/profile/update`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          email: user.email,
-          profile: businessProfile,
-        }),
+      // Transform the nested data structure to match our backend
+      const profileData = {
+        companyName: businessProfile.companyName,
+        registrationNumber: businessProfile.registrationNumber,
+        taxId: businessProfile.taxId,
+        description: businessProfile.description,
+        // Flatten address
+        address: businessProfile.address.street,
+        city: businessProfile.address.city,
+        state: businessProfile.address.state,
+        country: businessProfile.address.country,
+        postalCode: businessProfile.address.zipCode,
+        // Flatten contact
+        email: businessProfile.contact.email,
+        phone: businessProfile.contact.phone,
+        website: businessProfile.contact.website,
+        // Arrays
+        vehicleTypes: businessProfile.transportModes,
+        specializations: businessProfile.serviceAreas,
+        certifications: businessProfile.certifications,
+        // Insurance (flatten)
+        insuranceProvider: businessProfile.insuranceInfo.provider,
+        insuranceNumber: businessProfile.insuranceInfo.policyNumber,
+        insuranceExpiry: businessProfile.insuranceInfo.expiryDate,
+      };
+
+      await updateCarrierProfile({
+        ...profileData,
+        userId: user.id,
       });
 
-      if (response.ok) {
-        notifications.show({
-          title: 'Success',
-          message: 'Business profile updated successfully',
-          color: 'green',
-        });
-        setIsEditing(false);
-      }
+      notifications.show({
+        title: 'Success',
+        message: 'Business profile updated successfully',
+        color: 'green',
+      });
+      setIsEditing(false);
     } catch (error) {
       console.error('Error updating business profile:', error);
       notifications.show({

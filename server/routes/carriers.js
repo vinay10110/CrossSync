@@ -1,159 +1,123 @@
 const express = require('express');
 const router = express.Router();
-const multer = require('multer');
-const { S3Client, PutObjectCommand } = require('@aws-sdk/client-s3');
-const crypto = require('crypto');
 const Carrier = require('../models/Carrier');
 
-// Middleware to check if user is a seller
-const checkSellerRole = async (req, res, next) => {
-  try {
-    const userRole = req.headers['x-user-role'];
-    if (userRole !== 'seller') {
-      return res.status(403).json({ message: 'Access denied. Only sellers can view carrier profiles.' });
-    }
-    next();
-  } catch (error) {
-    res.status(500).json({ message: 'Error checking user role' });
-  }
-};
-
-// Middleware to check if user owns the profile
-const checkProfileOwnership = async (req, res, next) => {
-  try {
-    const requestingUserId = req.headers['x-user-id'];
-    const targetUserId = req.params.userId;
-    
-    if (requestingUserId !== targetUserId) {
-      const userRole = req.headers['x-user-role'];
-      if (userRole !== 'seller') {
-        return res.status(403).json({ message: 'Access denied. You can only view your own profile.' });
-      }
-    }
-    next();
-  } catch (error) {
-    res.status(500).json({ message: 'Error checking profile ownership' });
-  }
-};
-
-// Configure S3
-const s3Client = new S3Client({
-  region: process.env.AWS_REGION,
-  credentials: {
-    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
-  }
-});
-
-// Configure multer for file uploads
-const storage = multer.memoryStorage();
-const upload = multer({ 
-  storage,
-  limits: {
-    fileSize: 5 * 1024 * 1024 // 5MB limit
-  }
-});
-
-// Helper function to upload to S3
-async function uploadToS3(file, folder) {
-  const fileName = `${folder}/${crypto.randomBytes(16).toString('hex')}-${file.originalname}`;
+// Simple helper function to format carrier data
+const formatCarrierData = (carrier) => {
+  if (!carrier) return null;
   
-  const command = new PutObjectCommand({
-    Bucket: process.env.AWS_S3_BUCKET,
-    Key: fileName,
-    Body: file.buffer,
-    ContentType: file.mimetype,
-    ACL: 'public-read'
-  });
+  return {
+    userId: carrier.userId,
+    companyName: carrier.companyName || '',
+    registrationNumber: carrier.registrationNumber || '',
+    taxId: carrier.taxId || '',
+    address: carrier.address || '',
+    city: carrier.city || '',
+    state: carrier.state || '',
+    country: carrier.country || '',
+    postalCode: carrier.postalCode || '',
+    phone: carrier.phone || '',
+    email: carrier.email || '',
+    website: carrier.website || '',
+    description: carrier.description || '',
+    fleetSize: carrier.fleetSize || '',
+    vehicleTypes: carrier.vehicleTypes || [],
+    specializations: carrier.specializations || [],
+    certifications: carrier.certifications || [],
+    operatingRegions: carrier.operatingRegions || [],
+    insuranceProvider: carrier.insuranceProvider || '',
+    insuranceNumber: carrier.insuranceNumber || '',
+    insuranceExpiry: carrier.insuranceExpiry || '',
+    bankName: carrier.bankName || '',
+    accountNumber: carrier.accountNumber || '',
+    ifscCode: carrier.ifscCode || '',
+    logo: carrier.logo || null,
+    documents: carrier.documents || []
+  };
+};
 
-  await s3Client.send(command);
-  return `https://${process.env.AWS_S3_BUCKET}.s3.${process.env.AWS_REGION}.amazonaws.com/${fileName}`;
-}
-
-// Get carrier profile - Protected route
-router.get('/profile/:userId', checkProfileOwnership, async (req, res) => {
+// Get carrier profile
+router.get('/profile/:userId', async (req, res) => {
   try {
+    console.log('Fetching carrier profile for userId:', req.params.userId);
+    
     const carrier = await Carrier.findOne({ userId: req.params.userId });
     if (!carrier) {
-      return res.status(404).json({ message: 'Carrier profile not found' });
+      console.log('No carrier found, returning empty profile');
+      return res.json({ profile: formatCarrierData(null) });
     }
-    res.json(carrier);
+    
+    console.log('Found carrier:', carrier.companyName);
+    res.json({ profile: formatCarrierData(carrier) });
   } catch (error) {
     console.error('Error fetching carrier profile:', error);
-    res.status(500).json({ message: 'Failed to fetch carrier profile' });
+    res.status(500).json({ 
+      message: 'Failed to fetch carrier profile',
+      error: error.message
+    });
   }
 });
 
-// Create or update carrier profile - Only profile owner can update
+// Create or update carrier profile
 router.post('/profile', async (req, res) => {
   try {
     const { userId, ...profileData } = req.body;
     
-    // Check if user is updating their own profile
-    const requestingUserId = req.headers['x-user-id'];
-    if (requestingUserId !== userId) {
-      return res.status(403).json({ message: 'Access denied. You can only update your own profile.' });
+    console.log('Updating carrier profile for userId:', userId);
+    console.log('Profile data received:', profileData);
+    
+    if (!userId) {
+      return res.status(400).json({ message: 'User ID is required' });
     }
 
-    // Convert insurance expiry to Date object
-    if (profileData.insuranceExpiry) {
+    // Convert insurance expiry to Date object if provided
+    if (profileData.insuranceExpiry && profileData.insuranceExpiry !== '') {
       profileData.insuranceExpiry = new Date(profileData.insuranceExpiry);
     }
 
+    // Clean up empty strings - convert to null or remove
+    Object.keys(profileData).forEach(key => {
+      if (profileData[key] === '' || profileData[key] === null) {
+        delete profileData[key]; // Remove empty fields instead of setting to null
+      }
+    });
+
+    console.log('Cleaned profile data:', profileData);
+
     const carrier = await Carrier.findOneAndUpdate(
       { userId },
-      { ...profileData },
-      { new: true, upsert: true, runValidators: true }
+      { $set: profileData },
+      { new: true, upsert: true, runValidators: false }
     );
 
-    res.json(carrier);
+    console.log('Carrier saved successfully:', carrier.companyName);
+    res.json({ 
+      message: 'Profile updated successfully', 
+      profile: formatCarrierData(carrier) 
+    });
   } catch (error) {
     console.error('Error saving carrier profile:', error);
-    res.status(500).json({ message: 'Failed to save carrier profile' });
+    res.status(500).json({ 
+      message: 'Failed to save carrier profile',
+      error: error.message,
+      details: error.stack
+    });
   }
 });
 
-// Upload carrier logo
-router.post('/upload-logo', upload.single('logo'), async (req, res) => {
+// Simple logo upload placeholder (without S3)
+router.post('/upload-logo', async (req, res) => {
   try {
-    if (!req.file) {
-      return res.status(400).json({ message: 'No file uploaded' });
-    }
-
-    const url = await uploadToS3(req.file, 'carrier-logos');
-    res.json({ url });
+    // For now, just return a placeholder response
+    res.status(501).json({ message: 'Logo upload not implemented yet' });
   } catch (error) {
     console.error('Error uploading logo:', error);
     res.status(500).json({ message: 'Failed to upload logo' });
   }
 });
 
-// Upload carrier documents
-router.post('/upload-documents', upload.array('documents', 5), async (req, res) => {
-  try {
-    if (!req.files || req.files.length === 0) {
-      return res.status(400).json({ message: 'No files uploaded' });
-    }
-
-    const uploadPromises = req.files.map(file => uploadToS3(file, 'carrier-documents'));
-    const urls = await Promise.all(uploadPromises);
-
-    const documents = urls.map((url, index) => ({
-      name: req.files[index].originalname,
-      url,
-      type: req.files[index].mimetype,
-      uploadedAt: new Date()
-    }));
-
-    res.json({ documents });
-  } catch (error) {
-    console.error('Error uploading documents:', error);
-    res.status(500).json({ message: 'Failed to upload documents' });
-  }
-});
-
-// Get carrier statistics - Protected route
-router.get('/stats/:userId', checkProfileOwnership, async (req, res) => {
+// Get carrier statistics
+router.get('/stats/:userId', async (req, res) => {
   try {
     const carrier = await Carrier.findOne({ userId: req.params.userId });
     if (!carrier) {
@@ -161,41 +125,13 @@ router.get('/stats/:userId', checkProfileOwnership, async (req, res) => {
     }
 
     res.json({
-      rating: carrier.rating,
-      totalShipments: carrier.totalShipments,
-      completedShipments: carrier.completedShipments
+      rating: carrier.rating || 0,
+      totalShipments: carrier.totalShipments || 0,
+      completedShipments: carrier.completedShipments || 0
     });
   } catch (error) {
     console.error('Error fetching carrier stats:', error);
     res.status(500).json({ message: 'Failed to fetch carrier stats' });
-  }
-});
-
-// Update carrier statistics - Only profile owner can update
-router.post('/stats/:userId', async (req, res) => {
-  try {
-    const { rating, totalShipments, completedShipments } = req.body;
-    
-    // Check if user is updating their own stats
-    const requestingUserId = req.headers['x-user-id'];
-    if (requestingUserId !== req.params.userId) {
-      return res.status(403).json({ message: 'Access denied. You can only update your own statistics.' });
-    }
-    
-    const carrier = await Carrier.findOneAndUpdate(
-      { userId: req.params.userId },
-      { rating, totalShipments, completedShipments },
-      { new: true }
-    );
-
-    if (!carrier) {
-      return res.status(404).json({ message: 'Carrier not found' });
-    }
-
-    res.json(carrier);
-  } catch (error) {
-    console.error('Error updating carrier stats:', error);
-    res.status(500).json({ message: 'Failed to update carrier stats' });
   }
 });
 

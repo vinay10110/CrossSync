@@ -320,6 +320,7 @@ router.get('/available', async (req, res) => {
       _id: shipment._id,
       origin: shipment.origin || '',
       destination: shipment.destination || '',
+      currency: shipment.currency || 'USD', // Add currency field
       products: (shipment.products || []).map(product => ({
         ...product,
         dimensions: typeof product.dimensions === 'string' 
@@ -436,6 +437,55 @@ Notes: ${notes || 'No additional notes'}
   } catch (error) {
     console.error('Error placing bid:', error);
     return res.status(500).json({ error: error.message || 'Failed to place bid' });
+  }
+});
+
+// Delete a bid (carrier can remove their own bid and place again)
+router.delete('/bid/:shipmentId', async (req, res) => {
+  try {
+    const { shipmentId } = req.params;
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({ error: 'Email is required' });
+    }
+
+    // Find shipment
+    const shipment = await Shipments.findById(shipmentId);
+    if (!shipment) {
+      return res.status(404).json({ error: 'Shipment not found' });
+    }
+
+    // Find carrier by email
+    const carrier = await User.findOne({ email });
+    if (!carrier) {
+      return res.status(404).json({ error: 'Carrier not found' });
+    }
+
+    // Locate the bid for this carrier
+    const bidIndex = shipment.bids.findIndex(
+      (bid) => bid.carrier.toString() === carrier._id.toString()
+    );
+
+    if (bidIndex === -1) {
+      return res.status(404).json({ error: 'Bid not found' });
+    }
+
+    const bid = shipment.bids[bidIndex];
+
+    // Do not allow deleting an accepted bid
+    if (bid.status === 'accepted') {
+      return res.status(400).json({ error: 'Cannot delete an accepted bid' });
+    }
+
+    // Remove the bid and save
+    shipment.bids.splice(bidIndex, 1);
+    await shipment.save();
+
+    return res.json({ success: true, message: 'Bid deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting bid:', error);
+    return res.status(500).json({ error: 'Failed to delete bid' });
   }
 });
 

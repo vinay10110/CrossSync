@@ -101,23 +101,14 @@ const CarrierProfile = () => {
     setLoading(true);
 
     try {
-      // First, upload logo if changed
+      // For now, skip logo upload and just save the profile data
       let logoUrl = profile.logo;
       if (profile.logo instanceof File) {
-        const formData = new FormData();
-        formData.append('logo', profile.logo);
-        
-        const uploadResponse = await fetch(`${import.meta.env.VITE_API_URL}/carriers/upload-logo`, {
-          method: 'POST',
-          body: formData
-        });
-
-        if (!uploadResponse.ok) throw new Error('Failed to upload logo');
-        const { url } = await uploadResponse.json();
-        logoUrl = url;
+        console.log('Logo upload not implemented yet, skipping...');
+        logoUrl = null; // Set to null for now
       }
 
-      // Then save profile
+      // Save profile
       await updateCarrierProfile({
         ...profile,
         userId: user.id,

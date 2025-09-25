@@ -12,6 +12,7 @@ const sellerRoute = require('./routes/seller');
 const currencyRoute = require('./routes/currency');
 const trackingRoute = require('./routes/tracking');
 const conversationRoute = require('./routes/conversations');
+const carrierRoute = require('./routes/carriers');
 
 const app = express();
 const server = http.createServer(app);
@@ -66,6 +67,7 @@ app.use('/google', googleRoute);
 app.use('/seller', sellerRoute);
 app.use('/tracking', trackingRoute);
 app.use('/conversations', conversationRoute);
+app.use('/carriers', carrierRoute);
 
 server.listen(4000, () => {
   console.log("App running on port 4000");

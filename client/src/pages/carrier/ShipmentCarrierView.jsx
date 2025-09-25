@@ -67,6 +67,13 @@ const ShipmentCarrierView = () => {
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [selectedBidToAccept, setSelectedBidToAccept] = useState(null);
 
+  // Derive current user's bid on this shipment, if any
+  const myEmail = user?.emailAddresses?.[0]?.emailAddress || '';
+  const myBid = bids.find(
+    (b) => (b?.carrier?.email || '').toLowerCase() === myEmail.toLowerCase()
+  );
+  const hasOwnBid = !!myBid;
+
   
 
   // Fetch user data from MongoDB when component mounts
@@ -99,7 +106,8 @@ const ShipmentCarrierView = () => {
   }, [bids]);
 
   useEffect(() => {
-    if (bidAmount && bidCurrency !== shipmentData.currency) {
+    const targetCurrency = shipmentData.currency || 'USD'; // Add fallback
+    if (bidAmount && bidCurrency !== targetCurrency) {
       handleCurrencyConversion();
     } else {
       setConvertedAmount(null);
@@ -131,10 +139,11 @@ const ShipmentCarrierView = () => {
   const handleCurrencyConversion = async () => {
     if (!bidAmount) return;
 
+    const targetCurrency = shipmentData.currency || 'USD'; // Add fallback
     setIsConverting(true);
     try {
       const response = await fetch(
-        `${import.meta.env.VITE_API_URL}/shipments/convert-currency?amount=${bidAmount}&from=${bidCurrency}&to=${shipmentData.currency}`
+        `${import.meta.env.VITE_API_URL}/shipments/convert-currency?amount=${bidAmount}&from=${bidCurrency}&to=${targetCurrency}`
       );
       
       if (response.ok) {
@@ -179,6 +188,16 @@ const ShipmentCarrierView = () => {
       return;
     }
 
+    // Enforce one active bid per carrier per shipment: must withdraw to place again
+    if (hasOwnBid) {
+      notifications.show({
+        title: 'Already bid',
+        message: 'You have already placed a bid on this shipment. Withdraw your bid to place a new one.',
+        color: 'yellow'
+      });
+      return;
+    }
+
     if (!bidAmount) {
       notifications.show({
         title: 'Error',
@@ -209,7 +228,12 @@ const ShipmentCarrierView = () => {
       console.log(bidData)
 console.log(response);
       if (!response.ok) {
-        throw new Error('Failed to place bid');
+        let errMsg = 'Failed to place bid';
+        try {
+          const errData = await response.json();
+          errMsg = errData?.error || errData?.message || errMsg;
+        } catch {}
+        throw new Error(errMsg);
       }
 
       const result = await response.json();
@@ -224,11 +248,46 @@ console.log(response);
       setBidNotes('');
       setConvertedAmount(null);
       setConversionRate(null);
+
+      // Refresh bids to show the newly created bid
+      await fetchBids();
     } catch (error) {
       console.error('Error placing bid:', error);
       notifications.show({
         title: 'Error',
         message: error.message || 'Failed to place bid',
+        color: 'red'
+      });
+    }
+  };
+
+  const handleWithdrawMyBid = async () => {
+    if (!hasOwnBid) return;
+    try {
+      const response = await fetch(`${import.meta.env.VITE_API_URL}/shipments/bid/${shipmentData._id}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: myEmail })
+      });
+      if (!response.ok) {
+        let errMsg = 'Failed to withdraw bid';
+        try {
+          const errData = await response.json();
+          errMsg = errData?.error || errData?.message || errMsg;
+        } catch {}
+        throw new Error(errMsg);
+      }
+      notifications.show({
+        title: 'Bid withdrawn',
+        message: 'Your bid was withdrawn successfully. You can place a new bid now.',
+        color: 'green'
+      });
+      await fetchBids();
+    } catch (error) {
+      console.error('Error withdrawing bid:', error);
+      notifications.show({
+        title: 'Error',
+        message: error.message || 'Failed to withdraw bid',
         color: 'red'
       });
     }
@@ -584,6 +643,16 @@ console.log(response);
               <Space h="xl" />
               <Paper shadow="xs" p="md" withBorder>
                 <Text size="lg" weight={500} mb="md">Place Your Bid</Text>
+                {hasOwnBid && (
+                  <Paper p="xs" withBorder mb="sm">
+                    <Group position="apart">
+                      <Text size="sm">You have already placed a bid: <b>{myBid?.amount} {myBid?.currency}</b> ({myBid?.status})</Text>
+                      {myBid?.status !== 'accepted' && (
+                        <Button size="xs" color="red" variant="light" onClick={handleWithdrawMyBid}>Withdraw my bid</Button>
+                      )}
+                    </Group>
+                  </Paper>
+                )}
                 <Flex direction="column" gap="md">
                   <Group grow>
                     <NumberInput
@@ -594,6 +663,7 @@ console.log(response);
                       precision={2}
                       placeholder="Enter your bid amount"
                       required
+                      disabled={hasOwnBid}
                     />
                     <Select
                       label="Currency"
@@ -605,6 +675,7 @@ console.log(response);
                         { value: 'GBP', label: 'GBP' },
                         { value: 'INR', label: 'INR' }
                       ]}
+                      disabled={hasOwnBid}
                     />
                   </Group>
                   {isConverting ? (
@@ -631,12 +702,13 @@ console.log(response);
                     onChange={(event) => setBidNotes(event.currentTarget.value)}
                     placeholder="Add any notes or terms for your bid"
                     minRows={3}
+                    disabled={hasOwnBid}
                   />
                   <Button
                     onClick={handleBidSubmit}
                     loading={isLoading}
                     color="blue"
-                    disabled={isConverting}
+                    disabled={isConverting || hasOwnBid}
                   >
                     Place Bid
                   </Button>
@@ -668,6 +740,11 @@ console.log(response);
                           {new Date(bid.createdAt).toLocaleDateString()}
                         </Text>
                       </Group>
+                      {(bid?.carrier?.email || '').toLowerCase() === myEmail.toLowerCase() && bid.status !== 'accepted' && (
+                        <Group position="right" mt="xs">
+                          <Button size="xs" color="red" variant="light" onClick={handleWithdrawMyBid}>Withdraw</Button>
+                        </Group>
+                      )}
                       {bid.notes && (
                         <Text size="sm" mt="xs" color="dimmed">
                           {bid.notes}

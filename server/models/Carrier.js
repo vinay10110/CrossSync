@@ -6,89 +6,29 @@ const carrierSchema = new mongoose.Schema({
     required: true,
     unique: true
   },
-  companyName: {
-    type: String,
-    required: true
-  },
-  registrationNumber: {
-    type: String,
-    required: true
-  },
-  taxId: {
-    type: String,
-    required: true
-  },
-  address: {
-    type: String,
-    required: true
-  },
-  city: {
-    type: String,
-    required: true
-  },
-  state: {
-    type: String,
-    required: true
-  },
-  country: {
-    type: String,
-    required: true
-  },
-  postalCode: {
-    type: String,
-    required: true
-  },
-  phone: {
-    type: String,
-    required: true
-  },
-  email: {
-    type: String,
-    required: true
-  },
+  companyName: String,
+  registrationNumber: String,
+  taxId: String,
+  address: String,
+  city: String,
+  state: String,
+  country: String,
+  postalCode: String,
+  phone: String,
+  email: String,
   website: String,
   description: String,
-  fleetSize: {
-    type: Number,
-    required: true
-  },
-  vehicleTypes: {
-    type: [String],
-    required: true
-  },
-  specializations: {
-    type: [String],
-    required: true
-  },
+  fleetSize: Number,
+  vehicleTypes: [String],
+  specializations: [String],
   certifications: [String],
-  operatingRegions: {
-    type: [String],
-    required: true
-  },
-  insuranceProvider: {
-    type: String,
-    required: true
-  },
-  insuranceNumber: {
-    type: String,
-    required: true
-  },
-  insuranceExpiry: {
-    type: Date,
-    required: true
-  },
-  bankName: {
-    type: String,
-    required: true
-  },
-  accountNumber: {
-    type: String,
-    required: true
-  },
-  ifscCode: {
-    type: String,
-    required: true
-  },
+  operatingRegions: [String],
+  insuranceProvider: String,
+  insuranceNumber: String,
+  insuranceExpiry: Date,
+  bankName: String,
+  accountNumber: String,
+  ifscCode: String,
   logo: String,
   documents: [{
     name: String,
